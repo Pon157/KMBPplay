@@ -3,6 +3,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import pg from 'pg';
 import { INITIAL_POSTGRES_SCHEMA_SQL } from './src/db/schema.js';
+import { telegramBot } from './src/server/telegramBot.js';
 
 const { Pool } = pg;
 
@@ -158,20 +159,168 @@ async function startServer() {
     }
   });
 
-  // Telegram Bot Proxy & Status Test Route
-  app.post('/api/telegram/test', (req, res) => {
-    const { botToken, botUsername, proxyHost, proxyPort } = req.body;
-    if (!botToken) {
-      return res.status(400).json({ error: 'Telegram Bot Token is required' });
+  // Telegram Bot Live Status Route
+  app.get('/api/telegram/bot-status', (req, res) => {
+    res.json(telegramBot.getStatus());
+  });
+
+  // Generate Auth Code & Telegram Deep Link
+  app.post('/api/telegram/generate-code', (req, res) => {
+    const authData = telegramBot.generateAuthCode();
+    res.json(authData);
+  });
+
+  // Check Auth Code Status (Polled by Website)
+  app.get('/api/telegram/check-code/:code', async (req, res) => {
+    const { code } = req.params;
+    const authItem = telegramBot.checkAuthCode(code);
+
+    if (!authItem) {
+      return res.status(404).json({ error: 'Code not found or expired' });
     }
-    
-    // Simulate / execute Telegram bot getMe check
+
+    if (authItem.status === 'authenticated' && authItem.telegramUser) {
+      const tgUser = authItem.telegramUser;
+      const userId = `tg_${tgUser.id}`;
+      const username = tgUser.username ? tgUser.username : `user_${tgUser.id}`;
+      const nickname = `${tgUser.first_name} ${tgUser.last_name || ''}`.trim();
+
+      // Upsert user into PostgreSQL if connected
+      if (activePgPool && currentDbConfig.isConnected) {
+        try {
+          const client = await activePgPool.connect();
+          await client.query(`
+            INSERT INTO kmbp_users (id, email, nickname, username, telegram_username, telegram_verified, is_online)
+            VALUES ($1, $2, $3, $4, $5, true, true)
+            ON CONFLICT (id) DO UPDATE SET
+              nickname = EXCLUDED.nickname,
+              telegram_username = EXCLUDED.telegram_username,
+              telegram_verified = true,
+              is_online = true,
+              last_active = CURRENT_TIMESTAMP;
+          `, [
+            userId,
+            `${username}@telegram.user`,
+            nickname,
+            username,
+            tgUser.username || username
+          ]);
+          client.release();
+        } catch (dbErr: any) {
+          console.error('[Database] Failed to upsert telegram user:', dbErr.message);
+        }
+      }
+
+      return res.json({
+        status: 'authenticated',
+        user: {
+          id: userId,
+          nickname,
+          username,
+          telegramUsername: tgUser.username || username,
+          telegramVerified: true,
+          role: 'user',
+          avatar: tgUser.photo_url || `https://api.dicebear.com/7.x/bottts/svg?seed=${username}`,
+        },
+      });
+    }
+
+    return res.json({
+      status: authItem.status,
+      code: authItem.code,
+    });
+  });
+
+  // Verify Telegram Web Login Widget HMAC Payload
+  app.post('/api/telegram/verify-widget', async (req, res) => {
+    const widgetData = req.body;
+    const isValid = telegramBot.verifyTelegramWidgetData(widgetData);
+
+    if (!isValid) {
+      return res.status(401).json({ error: 'Invalid Telegram hash signature' });
+    }
+
+    const userId = `tg_${widgetData.id}`;
+    const username = widgetData.username || `user_${widgetData.id}`;
+    const nickname = `${widgetData.first_name || ''} ${widgetData.last_name || ''}`.trim();
+
+    // Upsert into DB if connected
+    if (activePgPool && currentDbConfig.isConnected) {
+      try {
+        const client = await activePgPool.connect();
+        await client.query(`
+          INSERT INTO kmbp_users (id, email, nickname, username, telegram_username, telegram_verified, is_online)
+          VALUES ($1, $2, $3, $4, $5, true, true)
+          ON CONFLICT (id) DO UPDATE SET
+            nickname = EXCLUDED.nickname,
+            telegram_username = EXCLUDED.telegram_username,
+            telegram_verified = true,
+            is_online = true,
+            last_active = CURRENT_TIMESTAMP;
+        `, [
+          userId,
+          `${username}@telegram.user`,
+          nickname,
+          username,
+          widgetData.username || username
+        ]);
+        client.release();
+      } catch (dbErr: any) {
+        console.error('[Database] Failed to upsert widget user:', dbErr.message);
+      }
+    }
+
     res.json({
-      status: 'success',
-      botUsername: botUsername || '@KMBPGameBot',
-      proxyConfigured: Boolean(proxyHost && proxyPort),
-      message: 'Telegram Bot token validated successfully!',
-      timestamp: new Date().toISOString(),
+      success: true,
+      user: {
+        id: userId,
+        nickname,
+        username,
+        telegramUsername: widgetData.username || username,
+        telegramVerified: true,
+        role: 'user',
+        avatar: widgetData.photo_url || `https://api.dicebear.com/7.x/bottts/svg?seed=${username}`,
+      },
+    });
+  });
+
+  // Telegram Bot Proxy & Connection Test Route
+  app.post('/api/telegram/test', async (req, res) => {
+    const { botToken, botUsername, proxyHost, proxyPort } = req.body;
+    
+    // Update process env temporarily for testing if provided
+    if (botToken) process.env.TELEGRAM_BOT_TOKEN = botToken;
+    if (botUsername) process.env.TELEGRAM_BOT_USERNAME = botUsername;
+    if (proxyHost) process.env.TELEGRAM_PROXY_HOST = proxyHost;
+    if (proxyPort) process.env.TELEGRAM_PROXY_PORT = proxyPort.toString();
+
+    telegramBot.reloadEnvConfig();
+
+    try {
+      const me = await telegramBot.apiRequest('getMe');
+      res.json({
+        status: 'success',
+        botUsername: `@${me.username}`,
+        botName: me.first_name,
+        proxyConfigured: Boolean(proxyHost && proxyPort),
+        message: 'Telegram Bot token and proxy verified successfully!',
+        timestamp: new Date().toISOString(),
+      });
+    } catch (err: any) {
+      res.status(500).json({
+        status: 'error',
+        error: err.message || 'Telegram Bot connection test failed',
+      });
+    }
+  });
+
+  // Restart Telegram Bot Polling Worker
+  app.post('/api/telegram/restart', async (req, res) => {
+    telegramBot.stop();
+    await telegramBot.start();
+    res.json({
+      message: 'Telegram bot reloaded',
+      status: telegramBot.getStatus(),
     });
   });
 
@@ -217,6 +366,8 @@ async function startServer() {
 
   app.listen(PORT, '0.0.0.0', () => {
     console.log(`КМБП Играет Server listening on http://0.0.0.0:${PORT}`);
+    // Start Telegram Bot Worker
+    telegramBot.start();
   });
 }
 
