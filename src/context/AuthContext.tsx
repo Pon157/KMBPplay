@@ -92,7 +92,7 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<User | null>(() => {
     const saved = localStorage.getItem('kmbp_auth_user');
-    return saved ? JSON.parse(saved) : DEFAULT_USERS[0]; // Default logged in as Admin for full experience preview
+    return saved ? JSON.parse(saved) : null;
   });
 
   const [onboardingStep, setOnboardingStep] = useState<OnboardingStep>(() => {

@@ -1,1 +1,15 @@
 @import "tailwindcss";
+
+@variant light (.light &);
+
+html.light {
+  color-scheme: light;
+  background-color: #f8fafc;
+  color: #0f172a;
+}
+
+html.dark {
+  color-scheme: dark;
+  background-color: #0b0f17;
+  color: #f8fafc;
+}

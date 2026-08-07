@@ -12,7 +12,11 @@ import {
   X,
   RotateCcw,
   ShieldAlert,
-  Volume2
+  Volume2,
+  Paperclip,
+  FileText,
+  Download,
+  Image as ImageIcon
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useData } from '../../context/DataContext';
@@ -22,6 +26,7 @@ export const GlobalChat: React.FC = () => {
   const { globalMessages, sendChatMessage, deleteChatMessage, pinChatMessage } = useData();
 
   const [textInput, setTextInput] = useState('');
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   // Audio Recording State
   const [isRecording, setIsRecording] = useState(false);
@@ -47,6 +52,24 @@ export const GlobalChat: React.FC = () => {
   }, [globalMessages]);
 
   if (!user) return null;
+
+  // Handle File Attachment Upload
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = reader.result as string;
+      if (file.type.startsWith('image/')) {
+        sendChatMessage('global', undefined, 'image', result, undefined, file.name);
+      } else {
+        sendChatMessage('global', undefined, 'file', result, undefined, file.name);
+      }
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    };
+    reader.readAsDataURL(file);
+  };
 
   // Send Text Message
   const handleSendText = (e: React.FormEvent) => {
@@ -293,11 +316,56 @@ export const GlobalChat: React.FC = () => {
                     <img src={msg.content} alt="Canvas Doodle" className="max-h-48 object-contain" />
                   </div>
                 )}
+
+                {/* Attached Image */}
+                {msg.type === 'image' && (
+                  <div className="mt-2 inline-block rounded-xl overflow-hidden border border-cyan-500/30 bg-black/50 max-w-sm">
+                    <img src={msg.content} alt={msg.fileName || 'Изображение'} className="max-h-60 object-contain rounded-lg" />
+                    {msg.fileName && (
+                      <div className="p-1.5 text-[10px] text-slate-400 bg-slate-900/80 truncate">
+                        {msg.fileName}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Attached Document File */}
+                {msg.type === 'file' && (
+                  <div className="mt-2 flex items-center justify-between gap-3 p-3 rounded-xl bg-slate-800/90 border border-slate-700 max-w-sm light:bg-slate-100 light:border-slate-300">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <div className="p-2 rounded-lg bg-cyan-500/20 text-cyan-400">
+                        <FileText className="w-5 h-5" />
+                      </div>
+                      <div className="min-w-0">
+                        <div className="text-xs font-bold text-slate-200 light:text-slate-800 truncate">
+                          {msg.fileName || 'Файл документа'}
+                        </div>
+                        <div className="text-[10px] text-slate-400">Вложение</div>
+                      </div>
+                    </div>
+                    <a
+                      href={msg.content}
+                      download={msg.fileName || 'attachment'}
+                      className="p-2 rounded-lg bg-cyan-500/20 text-cyan-400 hover:bg-cyan-500/30 transition-colors shrink-0"
+                      title="Скачать файл"
+                    >
+                      <Download className="w-4 h-4" />
+                    </a>
+                  </div>
+                )}
               </div>
             </div>
           ))}
           <div ref={messagesEndRef} />
         </div>
+
+        {/* Hidden File Input */}
+        <input
+          type="file"
+          ref={fileInputRef}
+          onChange={handleFileUpload}
+          className="hidden"
+        />
 
         {/* Input Controls Bar */}
         <div className="pt-3 border-t border-slate-800 light:border-slate-200 flex flex-col gap-2">
@@ -321,6 +389,16 @@ export const GlobalChat: React.FC = () => {
 
           <form onSubmit={handleSendText} className="flex items-center gap-2">
             
+            {/* File Attachment Button */}
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              className="p-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-cyan-400 border border-slate-700 light:bg-slate-100 light:border-slate-300"
+              title="Прикрепить файл или фото"
+            >
+              <Paperclip className="w-4 h-4" />
+            </button>
+
             {/* Draw Doodle Modal Launcher */}
             <button
               type="button"

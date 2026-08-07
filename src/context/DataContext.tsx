@@ -38,7 +38,7 @@ interface DataContextType {
   banCommunityMember: (communityId: string, targetUserId: string) => void;
   updateMemberRole: (communityId: string, targetUserId: string, role: CommunityMember['role']) => void;
   
-  sendChatMessage: (context: 'global' | 'community' | 'lobby', contextId: string | undefined, type: 'text' | 'voice' | 'drawing', content: string, duration?: number) => void;
+  sendChatMessage: (context: 'global' | 'community' | 'lobby', contextId: string | undefined, type: 'text' | 'voice' | 'drawing' | 'file' | 'image', content: string, duration?: number, fileName?: string) => void;
   deleteChatMessage: (messageId: string, context: 'global' | 'community' | 'lobby', contextId?: string) => void;
   pinChatMessage: (messageId: string, context: 'global' | 'community' | 'lobby', contextId?: string) => void;
   
@@ -160,138 +160,25 @@ const DEFAULT_COMMUNITIES: Community[] = [
 
 const DEFAULT_GLOBAL_MESSAGES: ChatMessage[] = [
   {
-    id: 'msg-1',
+    id: 'msg-system-welcome',
     chatContext: 'global',
-    senderId: 'user-admin-1',
-    senderNickname: 'КМБП_Главный_Админ',
-    senderUsername: 'kmbp_owner',
+    senderId: 'system',
+    senderNickname: 'Система КМБП',
+    senderUsername: 'kmbp_system',
     senderAvatar: 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=150&auto=format&fit=crop&q=80',
     senderRole: 'admin',
     type: 'text',
-    content: 'Приветствуем в общем чате КМБП! Включайте голосовые сообщения, рисуйте дудлы и создавайте игровые лобби.',
-    createdAt: new Date(Date.now() - 3600000 * 2).toISOString(),
+    content: 'Добро пожаловать в общий чат КМБП! Общайтесь, отправляйте голосовые и файлы, рисуйте и создавайте игровые лобби.',
+    createdAt: new Date().toISOString(),
     isPinned: true,
   },
-  {
-    id: 'msg-2',
-    chatContext: 'global',
-    senderId: 'user-2',
-    senderNickname: 'БотПоддержки_Альфа',
-    senderUsername: 'bot_alpha',
-    senderAvatar: 'https://images.unsplash.com/photo-1563089145-599997674d42?w=150&auto=format&fit=crop&q=80',
-    senderRole: 'user',
-    type: 'text',
-    content: 'Готов сыиграть партию в шахматы или Морской Бой в публичном лобби! Заходите!',
-    createdAt: new Date(Date.now() - 1800000).toISOString(),
-  },
 ];
 
-const DEFAULT_LOBBIES: GameLobby[] = [
-  {
-    id: 'lobby-chess-1',
-    gameType: 'chess',
-    title: 'Быстрый Блиц Шахматы КМБП (10 мин)',
-    hostId: 'user-admin-1',
-    players: [
-      {
-        userId: 'user-admin-1',
-        nickname: 'КМБП_Главный_Админ',
-        avatar: 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=150&auto=format&fit=crop&q=80',
-        isReady: true,
-        color: 'white',
-      },
-      {
-        userId: 'user-2',
-        nickname: 'БотПоддержки_Альфа',
-        avatar: 'https://images.unsplash.com/photo-1563089145-599997674d42?w=150&auto=format&fit=crop&q=80',
-        isReady: true,
-        color: 'black',
-      },
-    ],
-    maxPlayers: 2,
-    status: 'in_game',
-    settings: {
-      timeLimitMinutes: 10,
-      isPrivate: false,
-      variant: 'Classic',
-    },
-    createdAt: new Date().toISOString(),
-    currentTurnUserId: 'user-admin-1',
-  },
-  {
-    id: 'lobby-rpg-1',
-    gameType: 'dungeon_rpg',
-    title: 'КМБП: Хроники Подземелий (Групповой Рейд)',
-    hostId: 'user-2',
-    players: [
-      {
-        userId: 'user-2',
-        nickname: 'БотПоддержки_Альфа',
-        avatar: 'https://images.unsplash.com/photo-1563089145-599997674d42?w=150&auto=format&fit=crop&q=80',
-        isReady: true,
-      },
-      {
-        userId: 'user-3',
-        nickname: 'Кибер_Бот_КМБП',
-        avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
-        isReady: false,
-      },
-    ],
-    maxPlayers: 4,
-    status: 'waiting',
-    settings: {
-      timeLimitMinutes: 60,
-      isPrivate: false,
-      variant: 'Подземелье Дракона Поддержки',
-    },
-    createdAt: new Date().toISOString(),
-  },
-];
+const DEFAULT_LOBBIES: GameLobby[] = [];
 
-const DEFAULT_SIGNATURES: WallSignature[] = [
-  {
-    id: 'sig-1',
-    targetUserId: 'user-admin-1',
-    authorId: 'user-2',
-    authorNickname: 'БотПоддержки_Альфа',
-    authorUsername: 'bot_alpha',
-    authorAvatar: 'https://images.unsplash.com/photo-1563089145-599997674d42?w=150&auto=format&fit=crop&q=80',
-    content: 'Заскочил оставить роспись легенде КМБП! Удачи в турнире! 🎮',
-    createdAt: new Date(Date.now() - 7200000).toISOString(),
-    likes: ['user-admin-1', 'user-3'],
-    replies: [
-      {
-        id: 'reply-1',
-        authorId: 'user-admin-1',
-        authorNickname: 'КМБП_Главный_Админ',
-        authorAvatar: 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=150&auto=format&fit=crop&q=80',
-        content: 'Спасибо! Жду в финале по шахматам!',
-        createdAt: new Date(Date.now() - 3600000).toISOString(),
-      },
-    ],
-  },
-];
+const DEFAULT_SIGNATURES: WallSignature[] = [];
 
-const DEFAULT_NOTIFICATIONS: NotificationItem[] = [
-  {
-    id: 'notif-1',
-    userId: 'user-admin-1',
-    type: 'system',
-    title: 'Подключение к PostgreSQL',
-    message: 'Не забудьте настроить подключение к вашей внешней базе данных PostgreSQL в панели администратора.',
-    createdAt: new Date().toISOString(),
-    read: false,
-  },
-  {
-    id: 'notif-2',
-    userId: 'user-admin-1',
-    type: 'signature',
-    title: 'Новая роспись в профиле',
-    message: 'БотПоддержки_Альфа оставил роспись на вашей стене.',
-    createdAt: new Date(Date.now() - 7200000).toISOString(),
-    read: true,
-  },
-];
+const DEFAULT_NOTIFICATIONS: NotificationItem[] = [];
 
 const DataContext = createContext<DataContextType | undefined>(undefined);
 
@@ -554,9 +441,10 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const sendChatMessage = (
     context: 'global' | 'community' | 'lobby',
     contextId: string | undefined,
-    type: 'text' | 'voice' | 'drawing',
+    type: 'text' | 'voice' | 'drawing' | 'file' | 'image',
     content: string,
-    duration?: number
+    duration?: number,
+    fileName?: string
   ) => {
     if (!user) return;
     const newMsg: ChatMessage = {
@@ -571,6 +459,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       type,
       content,
       duration,
+      fileName,
       createdAt: new Date().toISOString(),
     };
 

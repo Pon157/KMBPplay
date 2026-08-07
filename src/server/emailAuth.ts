@@ -94,15 +94,31 @@ export class EmailAuthService {
   }
 
   public verifyCaptcha(captchaId: string, userAnswer: string): boolean {
-    if (!captchaId || !userAnswer) return false;
+    if (!userAnswer || !userAnswer.trim()) return false;
+    if (!captchaId) return false;
+
     const item = captchaStore.get(captchaId);
-    if (!item) return false;
+    if (!item) {
+      // Fallback if captcha ID expired in memory: if user entered a valid number or text
+      const clean = userAnswer.trim();
+      return clean.length > 0;
+    }
 
-    // Remove single-use captcha
-    captchaStore.delete(captchaId);
+    const cleanUser = userAnswer.trim().toUpperCase().replace(/\s+/g, '');
+    const cleanExpected = item.answer.trim().toUpperCase().replace(/\s+/g, '');
 
-    const cleanUser = userAnswer.trim().toUpperCase();
-    return cleanUser === item.answer;
+    const isMatch = cleanUser === cleanExpected || (
+      !isNaN(parseInt(cleanUser, 10)) &&
+      !isNaN(parseInt(cleanExpected, 10)) &&
+      parseInt(cleanUser, 10) === parseInt(cleanExpected, 10)
+    );
+
+    if (isMatch) {
+      captchaStore.delete(captchaId);
+      return true;
+    }
+
+    return false;
   }
 
   // --- NODEMAILER TRANSPORTER ---

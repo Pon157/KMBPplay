@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Flag, MessageSquare, Send, Award } from 'lucide-react';
+import { Flag, MessageSquare, Send, Award, Users, AlertCircle } from 'lucide-react';
 import { GameLobby } from '../../types';
 import { useAuth } from '../../context/AuthContext';
 import { useData } from '../../context/DataContext';
@@ -32,8 +32,25 @@ export const CheckersGame: React.FC<CheckersGameProps> = ({ lobby }) => {
 
   if (!user) return null;
 
+  const isHost = user.id === lobby.hostUserId;
+  const isGuest = user.id === lobby.guestUserId;
+  const isWaitingForOpponent = !lobby.guestUserId && lobby.status === 'waiting';
+
+  const myColor: 'r' | 'b' | 'both' = isHost && isGuest ? 'both' : (isHost ? 'r' : (isGuest ? 'b' : 'both'));
+  const [statusNote, setStatusNote] = useState('');
+
   const handleClick = (r: number, c: number) => {
     if (lobby.status === 'finished') return;
+
+    if (isWaitingForOpponent) {
+      setStatusNote('Ожидаем подключения второго игрока в лобби!');
+      return;
+    }
+
+    if (myColor !== 'both' && myColor !== turn) {
+      setStatusNote(`Сейчас ход вашего соперника (${turn === 'r' ? 'Красные' : 'Чёрные'})!`);
+      return;
+    }
 
     if (selected) {
       const [fromR, fromC] = selected;
@@ -44,6 +61,42 @@ export const CheckersGame: React.FC<CheckersGameProps> = ({ lobby }) => {
 
       const piece = board[fromR][fromC];
       if (piece) {
+        // Destination must be dark square and empty
+        const isDarkSquare = (r + c) % 2 === 1;
+        if (!isDarkSquare || board[r][c] !== null) {
+          setStatusNote('Нельзя сходить в эту клетку!');
+          return;
+        }
+
+        const absDr = Math.abs(r - fromR);
+        const absDc = Math.abs(c - fromC);
+
+        // Standard move or jump validation
+        const dr = r - fromR;
+        const isForward = piece.color === 'r' ? dr < 0 : dr > 0;
+
+        let isValidMove = false;
+        let isJump = false;
+
+        if (absDr === 1 && absDc === 1) {
+          if (piece.isKing || isForward) {
+            isValidMove = true;
+          }
+        } else if (absDr === 2 && absDc === 2) {
+          const midR = (fromR + r) / 2;
+          const midC = (fromC + c) / 2;
+          const midPiece = board[midR][midC];
+          if (midPiece && midPiece.color !== piece.color) {
+            isValidMove = true;
+            isJump = true;
+          }
+        }
+
+        if (!isValidMove) {
+          setStatusNote('Недопустимый ход в Шашках!');
+          return;
+        }
+
         const newBoard = board.map((row) => [...row]);
         
         // King Promotion check
@@ -51,8 +104,8 @@ export const CheckersGame: React.FC<CheckersGameProps> = ({ lobby }) => {
         newBoard[r][c] = { ...piece, isKing: isKingNow };
         newBoard[fromR][fromC] = null;
 
-        // Jump capture check
-        if (Math.abs(r - fromR) === 2 && Math.abs(c - fromC) === 2) {
+        // Jump capture removal
+        if (isJump) {
           const midR = (fromR + r) / 2;
           const midC = (fromC + c) / 2;
           newBoard[midR][midC] = null;
@@ -61,12 +114,14 @@ export const CheckersGame: React.FC<CheckersGameProps> = ({ lobby }) => {
         setBoard(newBoard);
         setTurn(turn === 'r' ? 'b' : 'r');
         setSelected(null);
+        setStatusNote('');
         updateGameState(lobby.id, newBoard);
       }
     } else {
       const piece = board[r][c];
       if (piece && piece.color === turn) {
         setSelected([r, c]);
+        setStatusNote('');
       }
     }
   };
@@ -100,6 +155,21 @@ export const CheckersGame: React.FC<CheckersGameProps> = ({ lobby }) => {
             <span>Сдаться</span>
           </button>
         </div>
+
+        {/* Status Banners */}
+        {isWaitingForOpponent && (
+          <div className="w-full mb-4 p-3 rounded-2xl bg-cyan-500/10 border border-cyan-500/30 text-center text-cyan-300 font-bold text-xs flex items-center justify-center gap-2 animate-pulse">
+            <Users className="w-4 h-4" />
+            <span>Ожидание второго игрока. Лобби создано, пригласите другого игрока!</span>
+          </div>
+        )}
+
+        {statusNote && (
+          <div className="w-full mb-4 p-2.5 rounded-xl bg-amber-500/20 border border-amber-500/40 text-center text-amber-300 font-semibold text-xs flex items-center justify-center gap-2">
+            <AlertCircle className="w-4 h-4" />
+            <span>{statusNote}</span>
+          </div>
+        )}
 
         {/* Board */}
         <div className="grid grid-cols-8 gap-0 border-4 border-slate-800 rounded-2xl overflow-hidden shadow-2xl">

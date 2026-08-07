@@ -136,8 +136,8 @@ const MainLayout: React.FC = () => {
       </footer>
 
       {/* Modals */}
-      {isShortcutsOpen && <ShortcutsModal onClose={() => setIsShortcutsOpen(false)} />}
-      {isLegalOpen && <LegalModal onClose={() => setIsLegalOpen(false)} />}
+      {isShortcutsOpen && <ShortcutsModal isOpen={isShortcutsOpen} onClose={() => setIsShortcutsOpen(false)} />}
+      {isLegalOpen && <LegalModal isOpen={isLegalOpen} onClose={() => setIsLegalOpen(false)} />}
       {isCaptchaRequired && (
         <CaptchaModal
           onSuccess={() => {

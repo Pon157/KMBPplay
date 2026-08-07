@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Flag, RotateCcw, MessageSquare, Send, Clock, Award } from 'lucide-react';
+import { Flag, RotateCcw, MessageSquare, Send, Clock, Award, Users, AlertCircle } from 'lucide-react';
 import { GameLobby } from '../../types';
 import { useAuth } from '../../context/AuthContext';
 import { useData } from '../../context/DataContext';
@@ -8,7 +8,6 @@ interface ChessGameProps {
   lobby: GameLobby;
 }
 
-// Simple interactive 8x8 Chess engine representation
 type Piece = { type: 'p' | 'r' | 'n' | 'b' | 'q' | 'k'; color: 'w' | 'b' } | null;
 
 const INITIAL_BOARD: Piece[][] = [
@@ -27,6 +26,86 @@ const PIECE_SYMBOLS: Record<string, string> = {
   b_k: '♚', b_q: '♛', b_r: '♜', b_b: '♝', b_n: '♞', b_p: '♟',
 };
 
+// Check if straight or diagonal path is clear of obstacles
+const isPathClear = (fromR: number, fromC: number, toR: number, toC: number, board: Piece[][]): boolean => {
+  const stepR = toR === fromR ? 0 : (toR > fromR ? 1 : -1);
+  const stepC = toC === fromC ? 0 : (toC > fromC ? 1 : -1);
+
+  let currR = fromR + stepR;
+  let currC = fromC + stepC;
+
+  while (currR !== toR || currC !== toC) {
+    if (board[currR][currC] !== null) return false;
+    currR += stepR;
+    currC += stepC;
+  }
+  return true;
+};
+
+// Strict Chess Move Validation Rules
+const isValidChessMove = (
+  piece: NonNullable<Piece>,
+  fromR: number,
+  fromC: number,
+  toR: number,
+  toC: number,
+  board: Piece[][]
+): boolean => {
+  const dr = toR - fromR;
+  const dc = toC - fromC;
+  const absDr = Math.abs(dr);
+  const absDc = Math.abs(dc);
+
+  // Cannot capture friendly piece
+  const destPiece = board[toR][toC];
+  if (destPiece && destPiece.color === piece.color) {
+    return false;
+  }
+
+  switch (piece.type) {
+    case 'p': { // Pawn
+      const dir = piece.color === 'w' ? -1 : 1; // White moves UP (-1), Black moves DOWN (+1)
+      const initialRank = piece.color === 'w' ? 6 : 1;
+
+      // 1 square forward
+      if (dc === 0 && dr === dir && destPiece === null) return true;
+      // 2 squares forward from starting rank
+      if (dc === 0 && fromR === initialRank && dr === 2 * dir && destPiece === null && board[fromR + dir][fromC] === null) return true;
+      // Diagonal capture
+      if (absDc === 1 && dr === dir && destPiece !== null && destPiece.color !== piece.color) return true;
+      return false;
+    }
+
+    case 'r': { // Rook (Horizontal or Vertical ONLY)
+      if (absDr > 0 && absDc > 0) return false;
+      return isPathClear(fromR, fromC, toR, toC, board);
+    }
+
+    case 'n': { // Knight (L-shape ONLY)
+      return (absDr === 2 && absDc === 1) || (absDr === 1 && absDc === 2);
+    }
+
+    case 'b': { // Bishop (Diagonal ONLY)
+      if (absDr !== absDc || absDr === 0) return false;
+      return isPathClear(fromR, fromC, toR, toC, board);
+    }
+
+    case 'q': { // Queen (Straight OR Diagonal)
+      const isDiagonal = absDr === absDc && absDr > 0;
+      const isStraight = (absDr === 0 && absDc > 0) || (absDc === 0 && absDr > 0);
+      if (!isDiagonal && !isStraight) return false;
+      return isPathClear(fromR, fromC, toR, toC, board);
+    }
+
+    case 'k': { // King (1 square in any direction)
+      return Math.max(absDr, absDc) === 1;
+    }
+
+    default:
+      return false;
+  }
+};
+
 export const ChessGame: React.FC<ChessGameProps> = ({ lobby }) => {
   const { user } = useAuth();
   const { surrenderGame, updateGameState, sendChatMessage, lobbyMessages } = useData();
@@ -36,11 +115,29 @@ export const ChessGame: React.FC<ChessGameProps> = ({ lobby }) => {
   const [currentTurn, setCurrentTurn] = useState<'w' | 'b'>('w');
   const [moveHistory, setMoveHistory] = useState<string[]>([]);
   const [chatInput, setChatInput] = useState('');
+  const [statusNote, setStatusNote] = useState('');
 
   if (!user) return null;
 
+  const isHost = user.id === lobby.hostUserId;
+  const isGuest = user.id === lobby.guestUserId;
+  const isWaitingForOpponent = !lobby.guestUserId && lobby.status === 'waiting';
+
+  // Determine allowed player color in multiplayer lobby
+  const myColor: 'w' | 'b' | 'both' = isHost && isGuest ? 'both' : (isHost ? 'w' : (isGuest ? 'b' : 'both'));
+
   const handleSquareClick = (r: number, c: number) => {
     if (lobby.status === 'finished') return;
+
+    if (isWaitingForOpponent) {
+      setStatusNote('Ожидаем подключения второго игрока в лобби!');
+      return;
+    }
+
+    if (myColor !== 'both' && myColor !== currentTurn) {
+      setStatusNote(`Сейчас ход ваших соперников (${currentTurn === 'w' ? 'Белые' : 'Чёрные'})!`);
+      return;
+    }
 
     if (selectedSquare) {
       const [fromR, fromC] = selectedSquare;
@@ -49,9 +146,14 @@ export const ChessGame: React.FC<ChessGameProps> = ({ lobby }) => {
         return;
       }
 
-      // Execute move
       const piece = board[fromR][fromC];
       if (piece) {
+        // Enforce Chess Rules
+        if (!isValidChessMove(piece, fromR, fromC, r, c, board)) {
+          setStatusNote(`Недопустимый ход для фигуры ${piece.type.toUpperCase()}!`);
+          return;
+        }
+
         const newBoard = board.map((row) => [...row]);
         newBoard[r][c] = piece;
         newBoard[fromR][fromC] = null;
@@ -63,6 +165,7 @@ export const ChessGame: React.FC<ChessGameProps> = ({ lobby }) => {
 
         setCurrentTurn(currentTurn === 'w' ? 'b' : 'w');
         setSelectedSquare(null);
+        setStatusNote('');
 
         updateGameState(lobby.id, newBoard);
       }
@@ -70,6 +173,7 @@ export const ChessGame: React.FC<ChessGameProps> = ({ lobby }) => {
       const piece = board[r][c];
       if (piece && piece.color === currentTurn) {
         setSelectedSquare([r, c]);
+        setStatusNote('');
       }
     }
   };
@@ -119,6 +223,21 @@ export const ChessGame: React.FC<ChessGameProps> = ({ lobby }) => {
             <span>Сдаться</span>
           </button>
         </div>
+
+        {/* Match Status Banners */}
+        {isWaitingForOpponent && (
+          <div className="w-full mb-4 p-3 rounded-2xl bg-cyan-500/10 border border-cyan-500/30 text-center text-cyan-300 font-bold text-xs flex items-center justify-center gap-2 animate-pulse">
+            <Users className="w-4 h-4" />
+            <span>Ожидание второго игрока. Лобби создано, пригласите другого игрока!</span>
+          </div>
+        )}
+
+        {statusNote && (
+          <div className="w-full mb-4 p-2.5 rounded-xl bg-amber-500/20 border border-amber-500/40 text-center text-amber-300 font-semibold text-xs flex items-center justify-center gap-2">
+            <AlertCircle className="w-4 h-4" />
+            <span>{statusNote}</span>
+          </div>
+        )}
 
         {/* Finished Banner */}
         {lobby.status === 'finished' && (

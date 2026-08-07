@@ -93,7 +93,7 @@ export interface CommunityTournament {
   winnerId?: string;
 }
 
-export type MessageType = 'text' | 'voice' | 'drawing';
+export type MessageType = 'text' | 'voice' | 'drawing' | 'file' | 'image';
 
 export interface ChatMessage {
   id: string;
@@ -107,6 +107,7 @@ export interface ChatMessage {
   type: MessageType;
   content: string; // text or audio base64/url or image dataUrl for drawings
   duration?: number; // for voice in seconds
+  fileName?: string; // for attached file/image name
   createdAt: string;
   isPinned?: boolean;
 }
