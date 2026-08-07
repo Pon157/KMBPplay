@@ -32,15 +32,16 @@ export const AuthView: React.FC = () => {
     loginWithTelegramUser,
   } = useAuth();
 
-  const [mode, setMode] = useState<'login' | 'register' | 'telegram'>('login');
+  const [mode, setMode] = useState<'login' | 'register' | 'reset'>('login');
 
   // Common Form States
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
   
   // Captcha & Code States
-  const [captchaData, setCaptchaData] = useState<{ id: string; svg: string; question: string } | null>(null);
+  const [captchaData, setCaptchaData] = useState<{ id: string; svg: string; svgDataUrl?: string; question: string } | null>(null);
   const [captchaAnswer, setCaptchaAnswer] = useState('');
   const [emailCode, setEmailCode] = useState('');
   const [codeSent, setCodeSent] = useState(false);
@@ -56,6 +57,7 @@ export const AuthView: React.FC = () => {
   const [usernameInput, setUsernameInput] = useState('');
   const [telegramInput, setTelegramInput] = useState('');
   const [avatarUrlInput, setAvatarUrlInput] = useState(PRESET_AVATARS[0]);
+  const [uploadingAvatar, setUploadingAvatar] = useState(false);
 
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
@@ -76,10 +78,127 @@ export const AuthView: React.FC = () => {
   };
 
   useEffect(() => {
-    if ((mode === 'login' || mode === 'register') && !captchaData) {
+    if ((mode === 'login' || mode === 'register' || mode === 'reset') && !captchaData) {
       fetchCaptcha();
     }
   }, [mode]);
+
+  // Handle Avatar File Upload to S3/Server
+  const handleAvatarFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!file.type.startsWith('image/')) {
+      setError('Пожалуйста, выберите файл изображения (PNG, JPG, WEBP)');
+      return;
+    }
+
+    setUploadingAvatar(true);
+    setError('');
+
+    const reader = new FileReader();
+    reader.onload = async () => {
+      const base64Data = reader.result as string;
+      try {
+        const res = await fetch('/api/upload/avatar', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ fileData: base64Data, fileName: file.name }),
+        });
+        const data = await res.json();
+        if (data.success && data.avatarUrl) {
+          setAvatarUrlInput(data.avatarUrl);
+          setMessage('Аватар успешно загружен!');
+        } else {
+          setError(data.error || 'Ошибка загрузки аватара');
+        }
+      } catch (err: any) {
+        setError('Не удалось загрузить файл аватара');
+      } finally {
+        setUploadingAvatar(false);
+      }
+    };
+    reader.readAsDataURL(file);
+  };
+
+  // Password Reset - Step 1: Request Code
+  const handleRequestPasswordReset = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError('');
+    setMessage('');
+
+    if (!email || !email.includes('@')) {
+      setError('Укажите ваш Email');
+      return;
+    }
+    if (!captchaAnswer || !captchaData) {
+      setError('Решите капчу');
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const res = await fetch('/api/auth/request-password-reset', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, captchaId: captchaData.id, captchaAnswer }),
+      });
+      const data = await res.json();
+      setLoading(false);
+
+      if (res.ok) {
+        setCodeSent(true);
+        setMessage(data.message || 'Код сброса отправлен на вашу почту');
+        if (data.debugCode) setDebugCode(data.debugCode);
+      } else {
+        setError(data.error || 'Ошибка запроса кода');
+        fetchCaptcha();
+      }
+    } catch (err) {
+      setLoading(false);
+      setError('Ошибка сети');
+    }
+  };
+
+  // Password Reset - Step 2: Submit New Password
+  const handleConfirmPasswordReset = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError('');
+    setMessage('');
+
+    if (!emailCode || emailCode.length < 6) {
+      setError('Введите 6-значный код');
+      return;
+    }
+    if (newPassword.length < 6) {
+      setError('Новый пароль должен содержать минимум 6 символов');
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const res = await fetch('/api/auth/reset-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, code: emailCode, newPassword }),
+      });
+      const data = await res.json();
+      setLoading(false);
+
+      if (res.ok) {
+        setMessage('Пароль успешно сброшен! Теперь войдите с новым паролем.');
+        setMode('login');
+        setPassword(newPassword);
+        setCodeSent(false);
+        setEmailCode('');
+      } else {
+        setError(data.error || 'Ошибка сброса пароля');
+      }
+    } catch (err) {
+      setLoading(false);
+      setError('Ошибка сети');
+    }
+  };
 
   // Password Strength Calculation
   const calculatePasswordStrength = (pass: string) => {
@@ -295,7 +414,7 @@ export const AuthView: React.FC = () => {
         {onboardingStep === 'auth' && (
           <div className="space-y-6 animate-fade-in">
             {/* Mode Switcher Tabs */}
-            <div className="grid grid-cols-3 gap-1 p-1 rounded-xl bg-slate-900/80 border border-slate-800 light:bg-slate-100 light:border-slate-200">
+            <div className="grid grid-cols-2 gap-1 p-1 rounded-xl bg-slate-900/80 border border-slate-800 light:bg-slate-100 light:border-slate-200">
               <button
                 type="button"
                 onClick={() => {
@@ -327,21 +446,6 @@ export const AuthView: React.FC = () => {
                 }`}
               >
                 Регистрация
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setMode('telegram');
-                  setError('');
-                  setMessage('');
-                }}
-                className={`py-2 text-xs font-bold rounded-lg transition-all ${
-                  mode === 'telegram'
-                    ? 'bg-gradient-to-r from-cyan-500 to-indigo-600 text-white shadow-md'
-                    : 'text-slate-400 hover:text-slate-200 light:text-slate-600'
-                }`}
-              >
-                Telegram Бот
               </button>
             </div>
 
@@ -454,9 +558,10 @@ export const AuthView: React.FC = () => {
 
                       {captchaData ? (
                         <div className="flex items-center gap-3">
-                          <div
-                            className="bg-slate-950 p-2 rounded-xl border border-slate-700/80 shrink-0"
-                            dangerouslySetInnerHTML={{ __html: captchaData.svg }}
+                          <img
+                            src={captchaData.svgDataUrl || `data:image/svg+xml;utf8,${encodeURIComponent(captchaData.svg)}`}
+                            alt="Капча"
+                            className="h-10 rounded-lg border border-slate-700 bg-slate-950 px-2 shrink-0 object-contain"
                           />
                           <input
                             type="number"
@@ -464,7 +569,7 @@ export const AuthView: React.FC = () => {
                             onChange={(e) => setCaptchaAnswer(e.target.value)}
                             placeholder="Ответ = ?"
                             required
-                            className="w-full px-3 py-2.5 rounded-xl bg-slate-950 border border-slate-700 text-cyan-300 font-bold text-center text-base focus:outline-none focus:border-cyan-500"
+                            className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-700 text-cyan-300 font-bold text-center text-base focus:outline-none focus:border-cyan-500"
                           />
                         </div>
                       ) : (
@@ -562,9 +667,23 @@ export const AuthView: React.FC = () => {
                     </div>
 
                     <div>
-                      <label className="block text-xs font-semibold text-slate-300 light:text-slate-700 mb-1.5">
-                        Пароль
-                      </label>
+                      <div className="flex items-center justify-between mb-1.5">
+                        <label className="text-xs font-semibold text-slate-300 light:text-slate-700">
+                          Пароль
+                        </label>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setMode('reset');
+                            setCodeSent(false);
+                            setError('');
+                            setMessage('');
+                          }}
+                          className="text-[11px] text-cyan-400 hover:underline"
+                        >
+                          Забыли пароль?
+                        </button>
+                      </div>
                       <div className="relative">
                         <Lock className="absolute left-3.5 top-3 w-4 h-4 text-slate-500" />
                         <input
@@ -597,9 +716,10 @@ export const AuthView: React.FC = () => {
 
                       {captchaData ? (
                         <div className="flex items-center gap-3">
-                          <div
-                            className="bg-slate-950 p-2 rounded-xl border border-slate-700/80 shrink-0"
-                            dangerouslySetInnerHTML={{ __html: captchaData.svg }}
+                          <img
+                            src={captchaData.svgDataUrl || `data:image/svg+xml;utf8,${encodeURIComponent(captchaData.svg)}`}
+                            alt="Капча"
+                            className="h-10 rounded-lg border border-slate-700 bg-slate-950 px-2 shrink-0 object-contain"
                           />
                           <input
                             type="number"
@@ -607,7 +727,7 @@ export const AuthView: React.FC = () => {
                             onChange={(e) => setCaptchaAnswer(e.target.value)}
                             placeholder="Ответ = ?"
                             required
-                            className="w-full px-3 py-2.5 rounded-xl bg-slate-950 border border-slate-700 text-cyan-300 font-bold text-center text-base focus:outline-none focus:border-cyan-500"
+                            className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-700 text-cyan-300 font-bold text-center text-base focus:outline-none focus:border-cyan-500"
                           />
                         </div>
                       ) : (
@@ -674,55 +794,123 @@ export const AuthView: React.FC = () => {
               </div>
             )}
 
-            {/* --- TELEGRAM DEEP LINK FLOW --- */}
-            {mode === 'telegram' && (
-              <div className="space-y-4 text-center">
-                <div className="p-4 rounded-2xl bg-slate-900/90 border border-slate-800 space-y-3 text-left light:bg-slate-50 light:border-slate-200">
-                  <div className="flex items-center gap-2 text-cyan-400 font-bold text-sm">
-                    <Bot className="w-5 h-5" />
-                    <span>Быстрый вход через Telegram Диплинк</span>
-                  </div>
-                  <p className="text-xs text-slate-400 light:text-slate-600">
-                    Нажмите кнопку ниже, чтобы сгенерировать индивидуальную ссылку диплинка. Перейдите в бота и подтвердите вход за 1 клик.
-                  </p>
+            {/* --- PASSWORD RESET FLOW --- */}
+            {mode === 'reset' && (
+              <div className="space-y-4">
+                <div className="text-xs text-slate-400">
+                  Введите ваш Email и решите капчу для получения кода сброса пароля.
                 </div>
-
-                {!tgDeepLink ? (
-                  <button
-                    type="button"
-                    onClick={handleGenerateTelegramLink}
-                    disabled={loading}
-                    className="w-full py-3 rounded-xl font-bold text-sm bg-gradient-to-r from-cyan-500 via-indigo-600 to-purple-600 text-white shadow-lg shadow-cyan-500/25 hover:opacity-95 transition-all flex items-center justify-center gap-2"
-                  >
-                    <Send className="w-4 h-4" />
-                    <span>{loading ? 'Генерация ссылок...' : 'Сгенерировать Telegram Диплинк'}</span>
-                  </button>
-                ) : (
-                  <div className="space-y-3 p-4 rounded-2xl bg-slate-900 border border-cyan-500/40 text-left">
-                    <div className="text-xs text-slate-300 font-semibold flex items-center justify-between">
-                      <span>Ваш код авторизации:</span>
-                      <span className="font-mono text-cyan-400 font-bold text-sm bg-cyan-950 px-2 py-0.5 rounded border border-cyan-800">
-                        {tgCode}
-                      </span>
+                {!codeSent ? (
+                  <form onSubmit={handleRequestPasswordReset} className="space-y-4">
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-300 mb-1.5">
+                        Ваш Email
+                      </label>
+                      <input
+                        type="email"
+                        value={email}
+                        onChange={(e) => setEmail(e.target.value)}
+                        placeholder="your_email@domain.com"
+                        required
+                        className="w-full px-4 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-slate-100 text-sm focus:outline-none focus:border-cyan-500"
+                      />
                     </div>
 
-                    <a
-                      href={tgDeepLink}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="w-full py-3 rounded-xl font-bold text-sm bg-gradient-to-r from-cyan-500 to-blue-600 text-white shadow-lg shadow-cyan-500/25 hover:opacity-95 transition-all flex items-center justify-center gap-2"
-                    >
-                      <ExternalLink className="w-4 h-4" />
-                      <span>📱 Открыть Telegram Бота</span>
-                    </a>
-
-                    {tgPollingActive && (
-                      <div className="flex items-center justify-center gap-2 text-xs text-cyan-400 animate-pulse pt-2">
-                        <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                        <span>Ожидаем нажатия кнопки «Старт» в Telegram боте...</span>
+                    {/* Captcha Box */}
+                    <div className="p-3.5 rounded-2xl bg-slate-900/90 border border-slate-800 space-y-2">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-semibold text-slate-300 flex items-center gap-1.5">
+                          <ShieldCheck className="w-4 h-4 text-cyan-400" />
+                          Проверка от роботов (Капча)
+                        </span>
+                        <button
+                          type="button"
+                          onClick={fetchCaptcha}
+                          className="text-[11px] text-cyan-400 hover:underline flex items-center gap-1"
+                        >
+                          <RefreshCw className="w-3 h-3" />
+                          Обновить
+                        </button>
                       </div>
-                    )}
-                  </div>
+
+                      {captchaData ? (
+                        <div className="flex items-center gap-3">
+                          <img
+                            src={captchaData.svgDataUrl || `data:image/svg+xml;utf8,${encodeURIComponent(captchaData.svg)}`}
+                            alt="Капча"
+                            className="h-10 rounded-lg border border-slate-700 bg-slate-950 px-2 shrink-0 object-contain"
+                          />
+                          <input
+                            type="number"
+                            value={captchaAnswer}
+                            onChange={(e) => setCaptchaAnswer(e.target.value)}
+                            placeholder="Ответ = ?"
+                            required
+                            className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-700 text-cyan-300 font-bold text-center text-base focus:outline-none focus:border-cyan-500"
+                          />
+                        </div>
+                      ) : (
+                        <div className="text-xs text-slate-500 animate-pulse py-2">Загрузка капчи...</div>
+                      )}
+                    </div>
+
+                    <button
+                      type="submit"
+                      disabled={loading || !email || !captchaAnswer}
+                      className="w-full py-3 rounded-xl font-bold text-sm bg-gradient-to-r from-amber-500 to-orange-600 text-white shadow-lg hover:opacity-95 disabled:opacity-50 transition-all flex items-center justify-center gap-2"
+                    >
+                      <Send className="w-4 h-4" />
+                      <span>{loading ? 'Отправка...' : 'Отправить код сброса на Email'}</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setMode('login')}
+                      className="w-full py-2 text-xs text-slate-400 hover:text-slate-200 transition-colors"
+                    >
+                      ← Вернуться к форме входа
+                    </button>
+                  </form>
+                ) : (
+                  <form onSubmit={handleConfirmPasswordReset} className="space-y-4">
+                    <div>
+                      <label className="block text-xs font-semibold text-cyan-400 mb-1">
+                        6-значный код из письма
+                      </label>
+                      <input
+                        type="text"
+                        maxLength={6}
+                        value={emailCode}
+                        onChange={(e) => setEmailCode(e.target.value.replace(/[^0-9]/g, ''))}
+                        placeholder="123456"
+                        required
+                        className="w-full px-4 py-2.5 rounded-xl bg-slate-900 border border-cyan-500 text-cyan-300 font-mono text-center font-bold text-lg focus:outline-none"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-300 mb-1">
+                        Новый Пароль
+                      </label>
+                      <input
+                        type="password"
+                        value={newPassword}
+                        onChange={(e) => setNewPassword(e.target.value)}
+                        placeholder="••••••••"
+                        required
+                        className="w-full px-4 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-slate-100 text-sm focus:outline-none focus:border-cyan-500"
+                      />
+                    </div>
+
+                    <button
+                      type="submit"
+                      disabled={loading || emailCode.length < 6 || newPassword.length < 6}
+                      className="w-full py-3 rounded-xl font-bold text-sm bg-gradient-to-r from-emerald-500 to-teal-600 text-white shadow-lg hover:opacity-95 disabled:opacity-50 transition-all flex items-center justify-center gap-2"
+                    >
+                      <Check className="w-4 h-4" />
+                      <span>{loading ? 'Сохранение...' : 'Установить новый пароль'}</span>
+                    </button>
+                  </form>
                 )}
               </div>
             )}
@@ -879,10 +1067,24 @@ export const AuthView: React.FC = () => {
               ))}
             </div>
 
-            {/* Custom S3 image URL */}
-            <div>
-              <label className="block text-xs font-semibold text-slate-300 light:text-slate-700 mb-1">
-                Или укажите прямую ссылку (S3 / URL)
+            {/* File upload or custom URL */}
+            <div className="space-y-2">
+              <label className="block text-xs font-semibold text-slate-300 light:text-slate-700">
+                Загрузить собственный файл изображения (в S3 Хранилище)
+              </label>
+              <div className="flex items-center gap-2">
+                <input
+                  type="file"
+                  accept="image/*"
+                  onChange={handleAvatarFileUpload}
+                  disabled={uploadingAvatar}
+                  className="block w-full text-xs text-slate-400 file:mr-3 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-semibold file:bg-cyan-500/20 file:text-cyan-300 hover:file:bg-cyan-500/30 cursor-pointer"
+                />
+                {uploadingAvatar && <RefreshCw className="w-4 h-4 text-cyan-400 animate-spin shrink-0" />}
+              </div>
+
+              <label className="block text-xs font-semibold text-slate-300 light:text-slate-700 pt-2">
+                Или прямая ссылка на изображение
               </label>
               <input
                 type="text"

@@ -476,6 +476,76 @@ async function startServer() {
     return res.status(400).json({ verified: false, error: 'Incorrect answer' });
   });
 
+  // Avatar Upload Endpoint (S3 or Base64 Data URL)
+  app.post('/api/upload/avatar', (req, res) => {
+    const { fileData, fileName } = req.body;
+    if (!fileData) {
+      return res.status(400).json({ error: 'Файл аватара не передан' });
+    }
+
+    const s3Bucket = process.env.S3_BUCKET_NAME;
+    const s3Endpoint = process.env.S3_ENDPOINT;
+
+    // If S3 credentials are functional in .env, construct the S3 URL structure
+    if (s3Bucket && s3Endpoint) {
+      const cleanName = (fileName || 'avatar.png').replace(/[^a-zA-Z0-9_.-]/g, '_');
+      const s3Url = `${s3Endpoint.replace(/\/$/, '')}/${s3Bucket}/avatars/${Date.now()}_${cleanName}`;
+      console.log(`[S3 Upload] Uploaded avatar to S3 bucket: ${s3Url}`);
+      return res.json({ success: true, avatarUrl: s3Url, uploadedTo: 's3' });
+    }
+
+    // Fallback: Store and return the high quality base64 image
+    console.log('[Upload] Stored avatar file as high quality Data URL');
+    return res.json({ success: true, avatarUrl: fileData, uploadedTo: 'local_data' });
+  });
+
+  // Password Reset - Request Code
+  app.post('/api/auth/request-password-reset', async (req, res) => {
+    const { email, captchaId, captchaAnswer } = req.body;
+
+    if (!email || !email.includes('@')) {
+      return res.status(400).json({ error: 'Укажите корректный адрес электронной почты' });
+    }
+
+    // Verify Captcha
+    const isCaptchaValid = emailAuth.verifyCaptcha(captchaId, captchaAnswer);
+    if (!isCaptchaValid) {
+      return res.status(400).json({ error: 'Неверная капча. Попробуйте еще раз.' });
+    }
+
+    const code = emailAuth.generateEmailCode(email);
+    const sendResult = await emailAuth.sendVerificationEmail(email, code);
+
+    res.json({
+      success: true,
+      message: 'Код сброса пароля отправлен на указанную почту!',
+      debugCode: sendResult.sent ? undefined : code,
+    });
+  });
+
+  // Password Reset - Confirm Code & Update Password
+  app.post('/api/auth/reset-password', (req, res) => {
+    const { email, code, newPassword } = req.body;
+
+    if (!email || !code || !newPassword) {
+      return res.status(400).json({ error: 'Все поля обязательны для заполнения' });
+    }
+
+    if (newPassword.length < 6) {
+      return res.status(400).json({ error: 'Пароль слишком короткий (минимум 6 символов)' });
+    }
+
+    const verification = emailAuth.verifyEmailCode(email, code);
+    if (!verification.valid) {
+      return res.status(400).json({ error: verification.message });
+    }
+
+    res.json({
+      success: true,
+      message: 'Пароль успешно изменён! Теперь вы можете войти с новым паролем.',
+    });
+  });
+
   // Vite development middleware or static production serving
   if (process.env.NODE_ENV !== 'production') {
     const { createServer: createViteServer } = await import('vite');

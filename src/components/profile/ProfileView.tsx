@@ -143,13 +143,34 @@ export const ProfileView: React.FC = () => {
 
               <div>
                 <label className="block text-xs font-semibold text-slate-300 light:text-slate-700 mb-1">
-                  Ссылка на Аватар
+                  Загрузить файл аватара в S3
                 </label>
+                <input
+                  type="file"
+                  accept="image/*"
+                  onChange={async (e) => {
+                    const file = e.target.files?.[0];
+                    if (!file) return;
+                    const reader = new FileReader();
+                    reader.onload = async () => {
+                      const res = await fetch('/api/upload/avatar', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ fileData: reader.result, fileName: file.name }),
+                      });
+                      const data = await res.json();
+                      if (data.avatarUrl) setAvatar(data.avatarUrl);
+                    };
+                    reader.readAsDataURL(file);
+                  }}
+                  className="block w-full text-xs text-slate-400 file:mr-2 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-cyan-500/20 file:text-cyan-300 cursor-pointer"
+                />
                 <input
                   type="text"
                   value={avatar}
                   onChange={(e) => setAvatar(e.target.value)}
-                  className="w-full px-3.5 py-2 rounded-xl bg-slate-900 border border-slate-700 text-slate-100 text-xs focus:outline-none focus:border-cyan-500 light:bg-slate-50 light:border-slate-300 light:text-slate-900"
+                  placeholder="или URL изображения..."
+                  className="w-full mt-2 px-3.5 py-2 rounded-xl bg-slate-900 border border-slate-700 text-slate-100 text-xs focus:outline-none focus:border-cyan-500 light:bg-slate-50 light:border-slate-300 light:text-slate-900"
                 />
               </div>
             </div>

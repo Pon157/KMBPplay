@@ -34,7 +34,7 @@ setInterval(() => {
 
 export class EmailAuthService {
   // --- CAPTCHA METHODS ---
-  public generateCaptcha(): { captchaId: string; question: string; svgDataUrl: string } {
+  public generateCaptcha(): { captchaId: string; question: string; svg: string; svgDataUrl: string } {
     const captchaId = `cap_${Date.now()}_${Math.floor(Math.random() * 100000)}`;
     
     // Simple math captcha (e.g. 14 + 8) or code
@@ -90,7 +90,7 @@ export class EmailAuthService {
 
     const svgDataUrl = `data:image/svg+xml;base64,${Buffer.from(svg).toString('base64')}`;
 
-    return { captchaId, question, svgDataUrl };
+    return { captchaId, question, svg, svgDataUrl };
   }
 
   public verifyCaptcha(captchaId: string, userAnswer: string): boolean {

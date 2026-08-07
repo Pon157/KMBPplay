@@ -198,10 +198,10 @@ export const AdminPanel: React.FC = () => {
           <div>
             <h2 className="text-base font-bold text-cyan-400 light:text-indigo-600 flex items-center gap-2">
               <Database className="w-5 h-5" />
-              <span>Подключение и Настройка Внешней Базы Данных PostgreSQL</span>
+              <span>Статус Подключения к PostgreSQL (.env DATABASE_URL)</span>
             </h2>
             <p className="text-xs text-slate-400 light:text-slate-500 mt-1">
-              Укажите строку подключения (DATABASE_URL) вашей базы данных PostgreSQL. Платформа самостоятельно создаст необходимые DDL таблицы.
+              Согласно политике безопасности, все чувствительные данные подключения считываются исключительно из файла <code className="text-amber-400 font-mono">.env</code> (переменная <code className="text-amber-400 font-mono">DATABASE_URL</code>).
             </p>
           </div>
 
@@ -219,57 +219,43 @@ export const AdminPanel: React.FC = () => {
             </div>
           )}
 
-          <form onSubmit={handleConnectPostgres} className="space-y-4">
-            <div>
-              <label className="block text-xs font-semibold text-slate-300 light:text-slate-700 mb-1">
-                PostgreSQL Connection String (DATABASE_URL)
-              </label>
-              <input
-                type="text"
-                value={dbConnStr}
-                onChange={(e) => setDbConnStr(e.target.value)}
-                placeholder="postgresql://username:password@hostname:5432/database_name"
-                required
-                className="w-full px-4 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-slate-100 text-xs font-mono focus:outline-none focus:border-cyan-500 light:bg-slate-50 light:border-slate-300 light:text-slate-900"
-              />
+          <div className="p-4 rounded-2xl bg-slate-900 border border-slate-800 space-y-3">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-semibold text-slate-300">Состояние базы данных:</span>
+              <span className={`px-2.5 py-1 rounded-full text-xs font-bold ${
+                systemSettings.postgres.isConnected ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' : 'bg-rose-500/20 text-rose-400 border border-rose-500/30'
+              }`}>
+                {systemSettings.postgres.isConnected ? 'Подключена & Активна' : 'Не Подключена'}
+              </span>
             </div>
 
-            <div className="flex flex-wrap gap-3">
-              <button
-                type="submit"
-                disabled={dbLoading}
-                className="px-5 py-2.5 rounded-xl text-xs font-bold bg-gradient-to-r from-cyan-500 to-indigo-600 text-white shadow-lg shadow-cyan-500/25 flex items-center gap-2"
-              >
-                {dbLoading ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Play className="w-4 h-4" />}
-                <span>Проверить и Сохранить Подключение</span>
-              </button>
-
+            <div className="flex flex-wrap gap-3 pt-2">
               <button
                 type="button"
                 onClick={handleAutoInitTables}
                 disabled={dbLoading}
-                className="px-5 py-2.5 rounded-xl text-xs font-bold bg-purple-600 hover:bg-purple-500 text-white shadow-lg shadow-purple-500/25 flex items-center gap-2"
+                className="px-5 py-2.5 rounded-xl text-xs font-bold bg-gradient-to-r from-purple-600 to-indigo-600 hover:opacity-90 text-white shadow-lg shadow-purple-500/25 flex items-center gap-2"
               >
-                <Database className="w-4 h-4" />
-                <span>Автоматически Создать Таблицы в БД (SQL DDL)</span>
+                {dbLoading ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Database className="w-4 h-4" />}
+                <span>Проверить БД & Пересоздать Таблицы (SQL DDL)</span>
               </button>
             </div>
-          </form>
+          </div>
 
           {/* Table List Details */}
           <div className="p-4 rounded-2xl bg-slate-900/80 border border-slate-800 space-y-2 light:bg-slate-50">
             <h3 className="font-bold text-xs text-slate-300 light:text-slate-800">
-              Структура таблиц, создаваемых в вашей PostgreSQL БД:
+              Таблицы платформы КМБП в PostgreSQL ({systemSettings.postgres.tablesCount || 0}):
             </h3>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-[11px] font-mono text-cyan-400">
-              <div className="p-2 rounded-lg bg-slate-800">kmbp_users</div>
-              <div className="p-2 rounded-lg bg-slate-800">kmbp_login_logs</div>
-              <div className="p-2 rounded-lg bg-slate-800">kmbp_communities</div>
-              <div className="p-2 rounded-lg bg-slate-800">kmbp_chat_messages</div>
-              <div className="p-2 rounded-lg bg-slate-800">kmbp_game_lobbies</div>
-              <div className="p-2 rounded-lg bg-slate-800">kmbp_ip_bans</div>
-              <div className="p-2 rounded-lg bg-slate-800">kmbp_wall_signatures</div>
-              <div className="p-2 rounded-lg bg-slate-800">kmbp_system_config</div>
+              <div className="p-2 rounded-lg bg-slate-800 border border-slate-700">kmbp_users</div>
+              <div className="p-2 rounded-lg bg-slate-800 border border-slate-700">kmbp_login_logs</div>
+              <div className="p-2 rounded-lg bg-slate-800 border border-slate-700">kmbp_communities</div>
+              <div className="p-2 rounded-lg bg-slate-800 border border-slate-700">kmbp_chat_messages</div>
+              <div className="p-2 rounded-lg bg-slate-800 border border-slate-700">kmbp_game_lobbies</div>
+              <div className="p-2 rounded-lg bg-slate-800 border border-slate-700">kmbp_ip_bans</div>
+              <div className="p-2 rounded-lg bg-slate-800 border border-slate-700">kmbp_wall_signatures</div>
+              <div className="p-2 rounded-lg bg-slate-800 border border-slate-700">kmbp_system_config</div>
             </div>
           </div>
         </div>
@@ -283,7 +269,7 @@ export const AdminPanel: React.FC = () => {
           <div className="p-6 rounded-3xl bg-[#131924] border border-slate-800 light:bg-white light:border-slate-200 space-y-4">
             <h2 className="text-sm font-bold text-rose-400 flex items-center gap-2">
               <ShieldAlert className="w-5 h-5" />
-              <span>Бан по IP-Адресу (Платформенная Блокировка)</span>
+              <span>Блокировка IP-Адресов (Платформенная Защита)</span>
             </h2>
 
             <form onSubmit={handleAddIpBanSubmit} className="flex flex-col sm:flex-row gap-3">
@@ -291,7 +277,7 @@ export const AdminPanel: React.FC = () => {
                 type="text"
                 value={newIpAddress}
                 onChange={(e) => setNewIpAddress(e.target.value)}
-                placeholder="IP адрес (e.g. 198.51.100.42)"
+                placeholder="IP адрес (например, 198.51.100.42)"
                 required
                 className="px-4 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-xs text-slate-100 focus:outline-none focus:border-rose-500 light:bg-slate-50 light:border-slate-300 light:text-slate-900"
               />
@@ -299,7 +285,7 @@ export const AdminPanel: React.FC = () => {
                 type="text"
                 value={newIpReason}
                 onChange={(e) => setNewIpReason(e.target.value)}
-                placeholder="Причина блокировки IP..."
+                placeholder="Причина блокировки..."
                 required
                 className="flex-1 px-4 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-xs text-slate-100 focus:outline-none focus:border-rose-500 light:bg-slate-50 light:border-slate-300 light:text-slate-900"
               />
@@ -336,70 +322,30 @@ export const AdminPanel: React.FC = () => {
         </div>
       )}
 
-      {/* TAB 3: TELEGRAM BOT & PROXY SETTINGS */}
+      {/* TAB 3: TELEGRAM BOT & PROXY STATUS */}
       {activeTab === 'telegram' && (
         <div className="p-6 rounded-3xl bg-[#131924] border border-slate-800 light:bg-white light:border-slate-200 space-y-5 animate-fade-in">
           <h2 className="text-base font-bold text-cyan-400 flex items-center gap-2">
             <Bot className="w-5 h-5" />
-            <span>Интеграция Telegram Бота & Прокси Настройки</span>
+            <span>Интеграция Telegram Бота & Прокси (.env Конфигурация)</span>
           </h2>
+          <p className="text-xs text-slate-400">Все параметры бота задаются через переменные <code className="text-cyan-400 font-mono">TELEGRAM_BOT_TOKEN</code> и <code className="text-cyan-400 font-mono">TELEGRAM_PROXY_*</code> в <code className="text-cyan-400 font-mono">.env</code>.</p>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <label className="block text-xs font-semibold mb-1">Токен Telegram Бота</label>
-              <input
-                type="text"
-                value={systemSettings.telegram.botToken}
-                onChange={(e) => updateSystemSettings({
-                  telegram: { ...systemSettings.telegram, botToken: e.target.value }
-                })}
-                className="w-full px-3.5 py-2 rounded-xl bg-slate-900 border border-slate-700 text-xs font-mono text-slate-100"
-              />
+            <div className="p-4 rounded-2xl bg-slate-900 border border-slate-800 space-y-1">
+              <span className="text-[11px] text-slate-400 font-semibold">Статус Токена Бота:</span>
+              <div className="text-xs font-bold text-emerald-400 flex items-center gap-1.5">
+                <CheckCircle2 className="w-4 h-4" />
+                <span>Загружен из process.env.TELEGRAM_BOT_TOKEN</span>
+              </div>
             </div>
 
-            <div>
-              <label className="block text-xs font-semibold mb-1">Юзернейм Бота</label>
-              <input
-                type="text"
-                value={systemSettings.telegram.botUsername}
-                onChange={(e) => updateSystemSettings({
-                  telegram: { ...systemSettings.telegram, botUsername: e.target.value }
-                })}
-                className="w-full px-3.5 py-2 rounded-xl bg-slate-900 border border-slate-700 text-xs font-mono text-slate-100"
-              />
-            </div>
-          </div>
-
-          <div className="p-4 rounded-2xl bg-slate-900 border border-slate-800 space-y-3">
-            <h3 className="font-bold text-xs text-amber-400">Настройки SOCKS5/HTTP Прокси</h3>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-              <input
-                type="text"
-                placeholder="Proxy Host"
-                value={systemSettings.telegram.proxyHost}
-                onChange={(e) => updateSystemSettings({
-                  telegram: { ...systemSettings.telegram, proxyHost: e.target.value }
-                })}
-                className="px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-xs"
-              />
-              <input
-                type="text"
-                placeholder="Proxy Port"
-                value={systemSettings.telegram.proxyPort}
-                onChange={(e) => updateSystemSettings({
-                  telegram: { ...systemSettings.telegram, proxyPort: e.target.value }
-                })}
-                className="px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-xs"
-              />
-              <input
-                type="text"
-                placeholder="User:Pass"
-                value={systemSettings.telegram.proxyAuth}
-                onChange={(e) => updateSystemSettings({
-                  telegram: { ...systemSettings.telegram, proxyAuth: e.target.value }
-                })}
-                className="px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-xs"
-              />
+            <div className="p-4 rounded-2xl bg-slate-900 border border-slate-800 space-y-1">
+              <span className="text-[11px] text-slate-400 font-semibold">SOCKS5/HTTP Прокси:</span>
+              <div className="text-xs font-bold text-cyan-400 flex items-center gap-1.5">
+                <Globe className="w-4 h-4" />
+                <span>Конфигурируется в .env (TELEGRAM_PROXY_HOST)</span>
+              </div>
             </div>
           </div>
         </div>
@@ -410,9 +356,15 @@ export const AdminPanel: React.FC = () => {
         <div className="p-6 rounded-3xl bg-[#131924] border border-slate-800 light:bg-white light:border-slate-200 space-y-4 animate-fade-in">
           <h2 className="text-base font-bold text-cyan-400 flex items-center gap-2">
             <HardDrive className="w-5 h-5" />
-            <span>Конфигурация Облачного S3 Хранилища</span>
+            <span>Статус S3 Хранилища (.env Конфигурация)</span>
           </h2>
-          <p className="text-xs text-slate-400">Используется для хранения аватарок, голосовых файлов и рисунков чата.</p>
+          <p className="text-xs text-slate-400">
+            Загрузка аватарок и медиафайлов производится напрямую в S3 хранилище с параметрами из <code className="text-cyan-400 font-mono">.env</code> (<code className="text-cyan-400 font-mono">S3_ENDPOINT</code>, <code className="text-cyan-400 font-mono">S3_BUCKET_NAME</code>, <code className="text-cyan-400 font-mono">S3_ACCESS_KEY_ID</code>).
+          </p>
+          <div className="p-4 rounded-2xl bg-slate-900 border border-slate-800 text-xs font-mono text-emerald-400 flex items-center gap-2">
+            <CheckCircle2 className="w-4 h-4" />
+            <span>Модуль прямых загрузок аватарок через S3 инициализирован.</span>
+          </div>
         </div>
       )}
 
@@ -421,9 +373,9 @@ export const AdminPanel: React.FC = () => {
         <div className="p-6 rounded-3xl bg-[#131924] border border-slate-800 light:bg-white light:border-slate-200 space-y-4 animate-fade-in">
           <h2 className="text-base font-bold text-rose-400 flex items-center gap-2">
             <Lock className="w-5 h-5" />
-            <span>Защита от DDoS Атак и Мониторинг Активности</span>
+            <span>Мониторинг Защиты от DDoS</span>
           </h2>
-          <p className="text-xs text-slate-400">Автоматическая генерация математической CAPTCHA при подозрительном поведении.</p>
+          <p className="text-xs text-slate-400">Автоматическая генерация математических и символьных графических CAPTCHA при авторизации.</p>
         </div>
       )}
 
