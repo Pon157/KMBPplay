@@ -7,8 +7,9 @@ import { telegramBot } from './src/server/telegramBot.js';
 
 const { Pool } = pg;
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+const safeDirname = typeof __dirname !== 'undefined' 
+  ? __dirname 
+  : (import.meta && import.meta.url ? path.dirname(fileURLToPath(import.meta.url)) : process.cwd());
 
 let activePgPool: pg.Pool | null = null;
 let currentDbConfig = {
