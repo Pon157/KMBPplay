@@ -1,9 +1,13 @@
+import dotenv from 'dotenv';
+dotenv.config();
+
 import express from 'express';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import pg from 'pg';
 import { INITIAL_POSTGRES_SCHEMA_SQL } from './src/db/schema.js';
 import { telegramBot } from './src/server/telegramBot.js';
+import { emailAuth } from './src/server/emailAuth.js';
 
 const { Pool } = pg;
 
@@ -42,6 +46,14 @@ async function initPgConnection(connectionUrl: string) {
     const client = await activePgPool.connect();
     const res = await client.query('SELECT NOW() as now, current_database() as db_name');
     
+    // Auto-create initial schema and tables if connected
+    try {
+      await client.query(INITIAL_POSTGRES_SCHEMA_SQL);
+      console.log('[PostgreSQL Database] Tables verified/created successfully!');
+    } catch (schemaErr: any) {
+      console.error('[PostgreSQL Database] Schema creation note:', schemaErr.message);
+    }
+
     // Check tables count
     const tablesRes = await client.query(`
       SELECT COUNT(*) as count 
@@ -313,6 +325,120 @@ async function startServer() {
         error: err.message || 'Telegram Bot connection test failed',
       });
     }
+  });
+
+  // --- EMAIL AUTHENTICATION & CAPTCHA ENDPOINTS ---
+  
+  // Get new Captcha challenge
+  app.get('/api/auth/captcha', (req, res) => {
+    const captcha = emailAuth.generateCaptcha();
+    res.json(captcha);
+  });
+
+  // Check SMTP Configuration Status
+  app.get('/api/auth/smtp-status', (req, res) => {
+    const host = process.env.SMTP_HOST || '';
+    const user = process.env.SMTP_USER || '';
+    res.json({
+      configured: Boolean(host && user),
+      smtpHost: host || 'Не настроен',
+      smtpUser: user || 'Не настроен',
+      smtpPort: process.env.SMTP_PORT || '465',
+      smtpFrom: process.env.SMTP_FROM || user || 'Не настроен',
+    });
+  });
+
+  // Test SMTP Connection
+  app.post('/api/auth/test-smtp', async (req, res) => {
+    const result = await emailAuth.testSmtpConnection();
+    if (result.success) {
+      res.json(result);
+    } else {
+      res.status(500).json(result);
+    }
+  });
+
+  // Request 6-digit Email Verification Code (with Captcha check)
+  app.post('/api/auth/send-email-code', async (req, res) => {
+    const { email, captchaId, captchaAnswer } = req.body;
+
+    if (!email || !email.includes('@')) {
+      return res.status(400).json({ error: 'Укажите корректный адрес электронной почты' });
+    }
+
+    // Verify Captcha
+    const isCaptchaValid = emailAuth.verifyCaptcha(captchaId, captchaAnswer);
+    if (!isCaptchaValid) {
+      return res.status(400).json({ error: 'Неверное решение капчи. Попробуйте еще раз.' });
+    }
+
+    // Generate code and send via SMTP
+    const code = emailAuth.generateEmailCode(email);
+    const sendResult = await emailAuth.sendVerificationEmail(email, code);
+
+    res.json({
+      success: sendResult.sent,
+      message: sendResult.message,
+      // For developer convenience if SMTP is not yet configured on server
+      debugCode: sendResult.sent ? undefined : code,
+    });
+  });
+
+  // Verify Email Code & Login / Register User
+  app.post('/api/auth/verify-email-code', async (req, res) => {
+    const { email, code, nickname } = req.body;
+
+    if (!email || !code) {
+      return res.status(400).json({ error: 'Email и код подтверждения обязательны' });
+    }
+
+    const verification = emailAuth.verifyEmailCode(email, code);
+    if (!verification.valid) {
+      return res.status(400).json({ error: verification.message });
+    }
+
+    const cleanEmail = email.trim().toLowerCase();
+    const username = cleanEmail.split('@')[0].replace(/[^a-zA-Z0-9_]/g, '_');
+    const userId = `email_${username}_${Math.floor(Math.random() * 1000)}`;
+    const userNickname = nickname || username;
+
+    // Upsert user into PostgreSQL database if active
+    if (activePgPool && currentDbConfig.isConnected) {
+      try {
+        const client = await activePgPool.connect();
+        await client.query(`
+          INSERT INTO kmbp_users (id, email, nickname, username, is_online)
+          VALUES ($1, $2, $3, $4, true)
+          ON CONFLICT (id) DO UPDATE SET
+            nickname = EXCLUDED.nickname,
+            is_online = true,
+            last_active = CURRENT_TIMESTAMP;
+        `, [
+          userId,
+          cleanEmail,
+          userNickname,
+          username
+        ]);
+        client.release();
+        console.log(`[Database] User ${cleanEmail} registered/updated in PostgreSQL database!`);
+      } catch (dbErr: any) {
+        console.error('[Database Error] Failed to write user to PostgreSQL:', dbErr.message);
+      }
+    } else {
+      console.warn('[Database Warning] PostgreSQL is not connected! User authenticated in memory only.');
+    }
+
+    res.json({
+      success: true,
+      user: {
+        id: userId,
+        email: cleanEmail,
+        nickname: userNickname,
+        username,
+        role: 'user',
+        avatar: `https://api.dicebear.com/7.x/bottts/svg?seed=${username}`,
+      },
+    });
   });
 
   // Restart Telegram Bot Polling Worker

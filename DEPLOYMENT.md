@@ -1,6 +1,6 @@
 # 🚀 Инструкция по развертыванию платформы «КМБП Играет» на сервере
 
-Полное руководство по установке зависимостей, настройке окружения `.env`, запуску сервера Node.js, подключению PostgreSQL и Telegram Бота авторизации через SOCKS5/HTTP прокси.
+Полное руководство по установке зависимостей, настройке окружения `.env`, запуску сервера Node.js, автоматическому подключению к PostgreSQL, работе Telegram Бота через SOCKS5/HTTP прокси и реальной Email-авторизации (SMTP + Капча).
 
 ---
 
@@ -20,7 +20,7 @@
 ```bash
 cd /var/www/kmbp-app
 
-# 1. Установка всех пакетов (включая прокси-агенты https-proxy-agent и socks-proxy-agent)
+# 1. Установка всех пакетов (включая nodemailer, dotenv, https-proxy-agent, socks-proxy-agent)
 npm install
 
 # 2. Установка PM2 глобально для фонового автозапуска
@@ -38,7 +38,7 @@ cp .env.example .env
 nano .env
 ```
 
-Заполните значения переменных:
+Заполните значения всех переменных:
 
 ```env
 # -----------------------------------------------------------------
@@ -63,14 +63,24 @@ TELEGRAM_BOT_USERNAME=kmbp_auth_bot
 
 # -----------------------------------------------------------------
 # 4. ПРОКСИ ДЛЯ TELEGRAM БОТА (SOCKS5 / HTTP)
-# Используйте ваши реквизиты прокси
 # -----------------------------------------------------------------
 TELEGRAM_PROXY_HOST=185.88.99.86
 TELEGRAM_PROXY_PORT=8000
 TELEGRAM_PROXY_AUTH=n6CZUF:Py0CSG
 
 # -----------------------------------------------------------------
-# 5. ОБЛАЧНОЕ S3 ХРАНИЛИЩЕ (Опционально)
+# 5. НАСТРОЙКА SMTP СЕРВЕРА ДЛЯ ОТПРАВКИ КОДОВ НА ПОЧТУ
+# Пример для Mail.ru / Yandex / Gmail или собственного SMTP
+# -----------------------------------------------------------------
+SMTP_HOST=smtp.mail.ru
+SMTP_PORT=465
+SMTP_SECURE=true
+SMTP_USER=noreply@yourdomain.com
+SMTP_PASS=YourEmailAppPassword
+SMTP_FROM="КМБП Играет <noreply@yourdomain.com>"
+
+# -----------------------------------------------------------------
+# 6. ОБЛАЧНОЕ S3 ХРАНИЛИЩЕ (Опционально)
 # -----------------------------------------------------------------
 S3_ENDPOINT=https://s3.yandexcloud.net
 S3_REGION=ru-central1
@@ -79,10 +89,12 @@ S3_ACCESS_KEY_ID=your_access_key
 S3_SECRET_ACCESS_KEY=your_secret_key
 
 # -----------------------------------------------------------------
-# 6. AI GEMINI API KEY (Опционально)
+# 7. AI GEMINI API KEY (Опционально)
 # -----------------------------------------------------------------
 GEMINI_API_KEY=your_gemini_api_key_here
 ```
+
+> ⚡ **Важно:** Файл `.env` загружается **автоматически** с помощью `dotenv` при старте приложения (`node dist/server.cjs`). Экспортировать переменные вручную в систему больше не требуется!
 
 ---
 
@@ -112,7 +124,7 @@ CREATE USER kmbp_user WITH PASSWORD 'MyStrongPass123';
 GRANT ALL PRIVILEGES ON DATABASE kmbp_db TO kmbp_user;
 ```
 
-> **Примечание:** При первом запуске сервера платформа **автоматически** применит SQL DDL-скрипт (`INITIAL_POSTGRES_SCHEMA_SQL`) и создаст таблицы: `kmbp_users`, `kmbp_login_logs`, `kmbp_communities`, `kmbp_chat_messages`, `kmbp_game_lobbies`, `kmbp_ip_bans`, `kmbp_wall_signatures`, `kmbp_system_config`.
+> **Автоматическое создание таблиц:** При запуске сервера платформа проверяет подключение по `DATABASE_URL` и **автоматически создает все необходимые таблицы** (`kmbp_users`, `kmbp_login_logs`, `kmbp_communities`, `kmbp_chat_messages`, `kmbp_game_lobbies`, `kmbp_ip_bans`, `kmbp_wall_signatures`, `kmbp_system_config`). Никаких дополнительных команд выполнять не нужно!
 
 ---
 
@@ -122,7 +134,7 @@ GRANT ALL PRIVILEGES ON DATABASE kmbp_db TO kmbp_user;
 ```bash
 npm run build
 ```
-*(Эта команда скомпилирует клиенский React и соберет backend в единственный файл `dist/server.cjs`)*
+*(Эта команда скомпилирует клиентский React и соберет backend в единый CJS-бандл `dist/server.cjs`)*
 
 ### Запуск через PM2:
 ```bash
@@ -136,19 +148,22 @@ pm2 startup
 
 ---
 
-## 🧪 7. Проверка Работоспособности
+## 🧪 7. Проверка Работоспособности и Тесты
 
-### 1. Проверка работы веб-сервера:
+### 1. Проверка работы сервера и базы данных:
 ```bash
 curl http://localhost:3000/api/health
 # Ответ: {"status":"ok","dbConnected":true}
+
+curl http://localhost:3000/api/db/status
+# Ответ выведет текущее состояние БД и количество созданных таблиц
 ```
 
-### 2. Проверка Telegram бота и прокси:
+### 2. Проверка статуса Telegram Бота:
 ```bash
 curl http://localhost:3000/api/telegram/bot-status
 ```
-Пример ответа:
+Пример успешного ответа:
 ```json
 {
   "configured": true,
@@ -161,7 +176,19 @@ curl http://localhost:3000/api/telegram/bot-status
 }
 ```
 
-### 3. Просмотр логов в реальном времени:
+### 3. Проверка отправки писем через SMTP и Капчи:
+```bash
+# Проверить статус SMTP настройки
+curl http://localhost:3000/api/auth/smtp-status
+
+# Протестировать подключение к SMTP серверу
+curl -X POST http://localhost:3000/api/auth/test-smtp
+
+# Получить математическую капчу (генерирует SVG)
+curl http://localhost:3000/api/auth/captcha
+```
+
+### 4. Просмотр логов сервера в реальном времени:
 ```bash
 pm2 logs kmbp-app
 ```
@@ -169,6 +196,7 @@ pm2 logs kmbp-app
 В логах вы увидите:
 ```text
 КМБП Играет Server listening on http://0.0.0.0:3000
+[PostgreSQL Database] Tables verified/created successfully!
 [TelegramBot] Testing bot connection with getMe...
 [TelegramBot] Bot initialized successfully as @kmbp_auth_bot (КМБП Авторизация)
 ```
@@ -177,7 +205,7 @@ pm2 logs kmbp-app
 
 ## 🔄 8. Обновление приложения в будущем
 
-Когда вы обновляете код на сервере:
+При пуше обновлений:
 
 ```bash
 git pull
@@ -188,5 +216,5 @@ pm2 restart kmbp-app
 
 ---
 
-## 🛡️ Поздравляем!
-Платформа **КМБП Играет** успешно развернута и работает на порту `3000` с включенной PostgreSQL базой и активным Telegram ботом через прокси!
+## 🛡️ Все готово!
+Платформа **КМБП Играет** развернута, автоматически создает таблицы в PostgreSQL, держит активного Telegram-бота через прокси и отправляет реальные 6-значные коды авторизации через SMTP с проверкой математической капчи!
