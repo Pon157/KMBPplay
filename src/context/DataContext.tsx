@@ -25,6 +25,10 @@ interface DataContextType {
   systemSettings: SystemSettings;
   activeLobby: GameLobby | null;
   setActiveLobby: (lobby: GameLobby | null) => void;
+  currentView: string;
+  setCurrentView: (view: string) => void;
+  isCaptchaRequired: boolean;
+  triggerCaptchaChallenge: () => void;
   
   // Actions
   createCommunity: (name: string, username: string, description: string, avatar: string, tags: string[], isPrivate: boolean) => Community;
@@ -348,6 +352,12 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   });
 
   const [activeLobby, setActiveLobby] = useState<GameLobby | null>(null);
+  const [currentView, setCurrentView] = useState<string>('games');
+  const [isCaptchaRequired, setIsCaptchaRequired] = useState<boolean>(false);
+
+  const triggerCaptchaChallenge = () => {
+    setIsCaptchaRequired(true);
+  };
 
   // Sync with LocalStorage
   useEffect(() => {
@@ -962,6 +972,10 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         systemSettings,
         activeLobby,
         setActiveLobby,
+        currentView,
+        setCurrentView,
+        isCaptchaRequired,
+        triggerCaptchaChallenge,
         createCommunity,
         joinCommunity,
         leaveCommunity,

@@ -3,64 +3,65 @@ import {
   Gamepad2,
   Lock,
   Mail,
-  UserCheck,
-  Send,
-  Upload,
-  Bot,
-  Sparkles,
   ArrowRight,
   ShieldCheck,
+  Send,
+  UserCheck,
+  Sparkles,
+  Bot,
   AlertCircle,
   KeyRound,
-  Check
+  Check,
+  RefreshCw,
+  ExternalLink,
+  ShieldAlert,
+  Copy
 } from 'lucide-react';
-import { useAuth } from '../../context/AuthContext';
-
-const PRESET_AVATARS = [
-  'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=200&auto=format&fit=crop&q=80',
-  'https://images.unsplash.com/photo-1563089145-599997674d42?w=200&auto=format&fit=crop&q=80',
-  'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=200&auto=format&fit=crop&q=80',
-  'https://images.unsplash.com/photo-1579546929518-9e396f3cc809?w=200&auto=format&fit=crop&q=80',
-  'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=200&auto=format&fit=crop&q=80',
-  'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=200&auto=format&fit=crop&q=80',
-];
+import { useAuth, PRESET_AVATARS } from '../../context/AuthContext';
 
 export const AuthView: React.FC = () => {
   const {
-    user,
     onboardingStep,
     login,
     register,
-    resetPassword,
     sendEmailCode,
     loginWithEmailCode,
     completeNicknameStep,
     completeTelegramStep,
     completeAvatarStep,
+    loginWithTelegramUser,
   } = useAuth();
 
-  const [mode, setMode] = useState<'login' | 'register' | 'reset'>('login');
-  const [authMethod, setAuthMethod] = useState<'password' | 'email_code'>('password');
+  const [mode, setMode] = useState<'login' | 'register' | 'telegram'>('login');
 
+  // Common Form States
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [nicknameInput, setNicknameInput] = useState('');
-  const [usernameInput, setUsernameInput] = useState('');
-  const [telegramInput, setTelegramInput] = useState('');
-  const [avatarUrlInput, setAvatarUrlInput] = useState(PRESET_AVATARS[0]);
-
-  // Email Code + Captcha states
+  const [confirmPassword, setConfirmPassword] = useState('');
+  
+  // Captcha & Code States
   const [captchaData, setCaptchaData] = useState<{ id: string; svg: string; question: string } | null>(null);
   const [captchaAnswer, setCaptchaAnswer] = useState('');
   const [emailCode, setEmailCode] = useState('');
   const [codeSent, setCodeSent] = useState(false);
   const [debugCode, setDebugCode] = useState<string | undefined>(undefined);
 
+  // Telegram Deep Link States
+  const [tgCode, setTgCode] = useState<string | null>(null);
+  const [tgDeepLink, setTgDeepLink] = useState<string | null>(null);
+  const [tgPollingActive, setTgPollingActive] = useState(false);
+
+  // Onboarding Step Inputs
+  const [nicknameInput, setNicknameInput] = useState('');
+  const [usernameInput, setUsernameInput] = useState('');
+  const [telegramInput, setTelegramInput] = useState('');
+  const [avatarUrlInput, setAvatarUrlInput] = useState(PRESET_AVATARS[0]);
+
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
   const [loading, setLoading] = useState(false);
 
-  // Fetch captcha when switching to email_code method
+  // Fetch Captcha
   const fetchCaptcha = async () => {
     try {
       const res = await fetch('/api/auth/captcha');
@@ -75,13 +76,31 @@ export const AuthView: React.FC = () => {
   };
 
   useEffect(() => {
-    if (authMethod === 'email_code' && !captchaData) {
+    if ((mode === 'login' || mode === 'register') && !captchaData) {
       fetchCaptcha();
     }
-  }, [authMethod]);
+  }, [mode]);
 
-  // Handle Email Code request
-  const handleSendEmailCode = async (e: React.FormEvent) => {
+  // Password Strength Calculation
+  const calculatePasswordStrength = (pass: string) => {
+    if (!pass) return { score: 0, label: 'Введите пароль', color: 'bg-slate-700', text: 'text-slate-400' };
+    
+    let score = 0;
+    if (pass.length >= 8) score += 25;
+    if (/[A-Z]/.test(pass)) score += 25;
+    if (/[0-9]/.test(pass)) score += 25;
+    if (/[^A-Za-z0-9]/.test(pass)) score += 25;
+
+    if (score <= 25) return { score: 25, label: 'Слишком простой (слабый)', color: 'bg-rose-500', text: 'text-rose-400' };
+    if (score <= 50) return { score: 50, label: 'Средняя надежность', color: 'bg-amber-500', text: 'text-amber-400' };
+    if (score <= 75) return { score: 75, label: 'Хороший пароль', color: 'bg-teal-500', text: 'text-teal-400' };
+    return { score: 100, label: 'Отличный, надежный пароль!', color: 'bg-emerald-500', text: 'text-emerald-400' };
+  };
+
+  const passStrength = calculatePasswordStrength(password);
+
+  // --- REGISTRATION FLOW: Send Code with Captcha & Password check ---
+  const handleRegisterSendCode = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
     setMessage('');
@@ -90,8 +109,16 @@ export const AuthView: React.FC = () => {
       setError('Укажите корректный адрес электронной почты');
       return;
     }
+    if (password.length < 6) {
+      setError('Пароль должен содержать минимум 6 символов');
+      return;
+    }
+    if (password !== confirmPassword) {
+      setError('Пароли не совпадают!');
+      return;
+    }
     if (!captchaAnswer || !captchaData) {
-      setError('Решите математическую капчу');
+      setError('Решите математическую капчу!');
       return;
     }
 
@@ -107,12 +134,78 @@ export const AuthView: React.FC = () => {
       }
     } else {
       setError(result.message);
-      fetchCaptcha(); // reload new captcha on error
+      fetchCaptcha();
     }
   };
 
-  // Handle Verify Email Code
-  const handleVerifyEmailCode = async (e: React.FormEvent) => {
+  // --- REGISTRATION FLOW: Verify Code & Register ---
+  const handleVerifyRegisterCode = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError('');
+    setMessage('');
+
+    if (!emailCode || emailCode.length < 6) {
+      setError('Введите 6-значный код из письма');
+      return;
+    }
+
+    setLoading(true);
+    const regResult = await register(email, password);
+    setLoading(false);
+
+    if (!regResult.success) {
+      setError(regResult.error || 'Ошибка при создании аккаунта');
+    }
+  };
+
+  // --- LOGIN FLOW: Login with Password + Captcha + Code ---
+  const handleLoginRequestCode = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError('');
+    setMessage('');
+
+    if (!email || !email.includes('@')) {
+      setError('Укажите корректный Email');
+      return;
+    }
+    if (!password) {
+      setError('Введите пароль');
+      return;
+    }
+    if (!captchaAnswer || !captchaData) {
+      setError('Решите математическую капчу');
+      return;
+    }
+
+    setLoading(true);
+
+    // 1. First test credentials
+    const loginResult = await login(email, password);
+    if (!loginResult.success) {
+      setLoading(false);
+      setError(loginResult.error || 'Неверная почта или пароль');
+      fetchCaptcha();
+      return;
+    }
+
+    // 2. Request 6-digit email confirmation code
+    const result = await sendEmailCode(email, captchaData.id, captchaAnswer);
+    setLoading(false);
+
+    if (result.success) {
+      setCodeSent(true);
+      setMessage(result.message || 'Код подтверждения отправлен на вашу почту');
+      if (result.debugCode) {
+        setDebugCode(result.debugCode);
+      }
+    } else {
+      setError(result.message);
+      fetchCaptcha();
+    }
+  };
+
+  // --- LOGIN FLOW: Confirm Code and Complete Login ---
+  const handleVerifyLoginCode = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
     setMessage('');
@@ -127,38 +220,61 @@ export const AuthView: React.FC = () => {
     setLoading(false);
 
     if (!result.success) {
-      setError(result.error || 'Неверный код подтверждения');
+      setError(result.error || 'Неверный или просроченный код');
     }
   };
 
-  // Submit main auth form (Password method)
-  const handleAuthSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  // --- TELEGRAM DEEP LINK GENERATION & POLLING ---
+  const handleGenerateTelegramLink = async () => {
     setError('');
     setMessage('');
     setLoading(true);
 
-    if (mode === 'login') {
-      const res = await login(email, password);
-      if (!res.success) {
-        setError(res.error || 'Ошибка входа');
+    try {
+      const res = await fetch('/api/telegram/generate-code', { method: 'POST' });
+      if (res.ok) {
+        const data = await res.json();
+        setTgCode(data.code);
+        setTgDeepLink(data.deepLink);
+        setTgPollingActive(true);
+        setMessage('Ссылка и код сгенерированы! Перейдите в Telegram бота.');
+      } else {
+        setError('Не удалось сгенерировать ссылку Telegram');
       }
-    } else if (mode === 'register') {
-      const res = await register(email, password);
-      if (!res.success) {
-        setError(res.error || 'Ошибка регистрации');
-      }
-    } else if (mode === 'reset') {
-      const res = await resetPassword(email);
-      setMessage(res.message || 'Письмо отправлено');
+    } catch (err: any) {
+      setError('Ошибка связи с сервером Telegram');
+    } finally {
+      setLoading(false);
     }
-
-    setLoading(false);
   };
+
+  // Poll Telegram auth code status
+  useEffect(() => {
+    if (!tgPollingActive || !tgCode) return;
+
+    const interval = setInterval(async () => {
+      try {
+        const res = await fetch(`/api/telegram/check-code/${tgCode}`);
+        if (res.ok) {
+          const data = await res.json();
+          if (data.status === 'authenticated' && data.user) {
+            clearInterval(interval);
+            setTgPollingActive(false);
+            setMessage('Вход через Telegram успешно выполнен!');
+            loginWithTelegramUser(data.user);
+          }
+        }
+      } catch (err) {
+        console.error('Polling Telegram status error:', err);
+      }
+    }, 2000);
+
+    return () => clearInterval(interval);
+  }, [tgPollingActive, tgCode]);
 
   return (
     <div className="min-h-[85vh] flex items-center justify-center p-4">
-      <div className="w-full max-w-xl rounded-3xl bg-[#131924]/90 border border-slate-800 p-6 sm:p-8 shadow-2xl text-slate-100 backdrop-blur-xl light:bg-white light:border-slate-200 light:text-slate-900 transition-all">
+      <div className="w-full max-w-xl rounded-3xl bg-[#131924]/95 border border-slate-800 p-6 sm:p-8 shadow-2xl text-slate-100 backdrop-blur-xl light:bg-white light:border-slate-200 light:text-slate-900 transition-all">
         
         {/* Header Logo */}
         <div className="text-center mb-6">
@@ -175,7 +291,7 @@ export const AuthView: React.FC = () => {
           </p>
         </div>
 
-        {/* STEP 0: LOGIN / REGISTER / RESET FORM */}
+        {/* STEP 0: LOGIN / REGISTER / TELEGRAM TABS */}
         {onboardingStep === 'auth' && (
           <div className="space-y-6 animate-fade-in">
             {/* Mode Switcher Tabs */}
@@ -184,7 +300,9 @@ export const AuthView: React.FC = () => {
                 type="button"
                 onClick={() => {
                   setMode('login');
+                  setCodeSent(false);
                   setError('');
+                  setMessage('');
                 }}
                 className={`py-2 text-xs font-bold rounded-lg transition-all ${
                   mode === 'login'
@@ -198,7 +316,9 @@ export const AuthView: React.FC = () => {
                 type="button"
                 onClick={() => {
                   setMode('register');
+                  setCodeSent(false);
                   setError('');
+                  setMessage('');
                 }}
                 className={`py-2 text-xs font-bold rounded-lg transition-all ${
                   mode === 'register'
@@ -211,50 +331,17 @@ export const AuthView: React.FC = () => {
               <button
                 type="button"
                 onClick={() => {
-                  setMode('reset');
+                  setMode('telegram');
                   setError('');
+                  setMessage('');
                 }}
                 className={`py-2 text-xs font-bold rounded-lg transition-all ${
-                  mode === 'reset'
+                  mode === 'telegram'
                     ? 'bg-gradient-to-r from-cyan-500 to-indigo-600 text-white shadow-md'
                     : 'text-slate-400 hover:text-slate-200 light:text-slate-600'
                 }`}
               >
-                Сброс
-              </button>
-            </div>
-
-            {/* Method Switcher: Password vs Email Code + Captcha */}
-            <div className="flex items-center justify-center gap-2 pb-1 border-b border-slate-800/80 text-xs">
-              <button
-                type="button"
-                onClick={() => {
-                  setAuthMethod('password');
-                  setError('');
-                  setMessage('');
-                }}
-                className={`px-3 py-1.5 rounded-lg font-medium transition-all ${
-                  authMethod === 'password'
-                    ? 'bg-slate-800 text-cyan-400 font-bold border border-cyan-500/30'
-                    : 'text-slate-400 hover:text-slate-200'
-                }`}
-              >
-                🔑 Вход по паролю
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setAuthMethod('email_code');
-                  setError('');
-                  setMessage('');
-                }}
-                className={`px-3 py-1.5 rounded-lg font-medium transition-all ${
-                  authMethod === 'email_code'
-                    ? 'bg-slate-800 text-cyan-400 font-bold border border-cyan-500/30'
-                    : 'text-slate-400 hover:text-slate-200'
-                }`}
-              >
-                ✉️ Код на Email + Капча
+                Telegram Бот
               </button>
             </div>
 
@@ -272,90 +359,83 @@ export const AuthView: React.FC = () => {
               </div>
             )}
 
-            {/* OPTION A: PASSWORD AUTH */}
-            {authMethod === 'password' && (
-              <form onSubmit={handleAuthSubmit} className="space-y-4">
-                <div>
-                  <label className="block text-xs font-semibold text-slate-300 light:text-slate-700 mb-1.5">
-                    Электронная Почта (Email)
-                  </label>
-                  <div className="relative">
-                    <Mail className="absolute left-3.5 top-3 w-4 h-4 text-slate-500" />
-                    <input
-                      type="email"
-                      value={email}
-                      onChange={(e) => setEmail(e.target.value)}
-                      placeholder="bot_user@kmbp.play"
-                      required
-                      className="w-full pl-10 pr-4 py-2.5 rounded-xl bg-slate-900/80 border border-slate-700 text-slate-100 text-sm placeholder-slate-500 focus:outline-none focus:border-cyan-500 light:bg-slate-50 light:border-slate-300 light:text-slate-900"
-                    />
-                  </div>
-                </div>
-
-                {mode !== 'reset' && (
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-300 light:text-slate-700 mb-1.5">
-                      Пароль
-                    </label>
-                    <div className="relative">
-                      <Lock className="absolute left-3.5 top-3 w-4 h-4 text-slate-500" />
-                      <input
-                        type="password"
-                        value={password}
-                        onChange={(e) => setPassword(e.target.value)}
-                        placeholder="••••••••"
-                        required
-                        className="w-full pl-10 pr-4 py-2.5 rounded-xl bg-slate-900/80 border border-slate-700 text-slate-100 text-sm placeholder-slate-500 focus:outline-none focus:border-cyan-500 light:bg-slate-50 light:border-slate-300 light:text-slate-900"
-                      />
-                    </div>
-                  </div>
-                )}
-
-                <button
-                  type="submit"
-                  disabled={loading}
-                  className="w-full py-3 rounded-xl font-bold text-sm bg-gradient-to-r from-cyan-500 via-indigo-600 to-purple-600 text-white shadow-lg shadow-cyan-500/25 hover:opacity-95 transition-opacity flex items-center justify-center gap-2"
-                >
-                  {loading ? (
-                    <span>Загрузка...</span>
-                  ) : (
-                    <>
-                      <span>
-                        {mode === 'login' && 'Войти в КМБП'}
-                        {mode === 'register' && 'Зарегистрироваться'}
-                        {mode === 'reset' && 'Восстановить Пароль'}
-                      </span>
-                      <ArrowRight className="w-4 h-4" />
-                    </>
-                  )}
-                </button>
-              </form>
-            )}
-
-            {/* OPTION B: REAL EMAIL CODE + CAPTCHA AUTH */}
-            {authMethod === 'email_code' && (
+            {/* --- REGISTRATION FORM FLOW --- */}
+            {mode === 'register' && (
               <div className="space-y-4">
-                <div>
-                  <label className="block text-xs font-semibold text-slate-300 light:text-slate-700 mb-1.5">
-                    Электронная Почта (Email)
-                  </label>
-                  <div className="relative">
-                    <Mail className="absolute left-3.5 top-3 w-4 h-4 text-slate-500" />
-                    <input
-                      type="email"
-                      value={email}
-                      onChange={(e) => setEmail(e.target.value)}
-                      placeholder="your_email@domain.com"
-                      required
-                      disabled={codeSent}
-                      className="w-full pl-10 pr-4 py-2.5 rounded-xl bg-slate-900/80 border border-slate-700 text-slate-100 text-sm placeholder-slate-500 focus:outline-none focus:border-cyan-500 light:bg-slate-50 light:border-slate-300 light:text-slate-900 disabled:opacity-60"
-                    />
-                  </div>
-                </div>
-
                 {!codeSent ? (
-                  <form onSubmit={handleSendEmailCode} className="space-y-4">
-                    {/* Captcha Box */}
+                  <form onSubmit={handleRegisterSendCode} className="space-y-4">
+                    {/* 1. Email */}
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-300 light:text-slate-700 mb-1.5">
+                        Электронная Почта (Email)
+                      </label>
+                      <div className="relative">
+                        <Mail className="absolute left-3.5 top-3 w-4 h-4 text-slate-500" />
+                        <input
+                          type="email"
+                          value={email}
+                          onChange={(e) => setEmail(e.target.value)}
+                          placeholder="your_email@domain.com"
+                          required
+                          className="w-full pl-10 pr-4 py-2.5 rounded-xl bg-slate-900/80 border border-slate-700 text-slate-100 text-sm placeholder-slate-500 focus:outline-none focus:border-cyan-500 light:bg-slate-50 light:border-slate-300 light:text-slate-900"
+                        />
+                      </div>
+                    </div>
+
+                    {/* 2. Password with Live Strength Bar */}
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-300 light:text-slate-700 mb-1.5 flex justify-between items-center">
+                        <span>Пароль</span>
+                        <span className={`text-[11px] font-bold ${passStrength.text}`}>
+                          {passStrength.label}
+                        </span>
+                      </label>
+                      <div className="relative">
+                        <Lock className="absolute left-3.5 top-3 w-4 h-4 text-slate-500" />
+                        <input
+                          type="password"
+                          value={password}
+                          onChange={(e) => setPassword(e.target.value)}
+                          placeholder="••••••••"
+                          required
+                          className="w-full pl-10 pr-4 py-2.5 rounded-xl bg-slate-900/80 border border-slate-700 text-slate-100 text-sm placeholder-slate-500 focus:outline-none focus:border-cyan-500 light:bg-slate-50 light:border-slate-300 light:text-slate-900"
+                        />
+                      </div>
+                      {/* Visual Strength Progress Bar */}
+                      <div className="w-full bg-slate-800 rounded-full h-1.5 mt-2 overflow-hidden">
+                        <div
+                          className={`h-full transition-all duration-300 ${passStrength.color}`}
+                          style={{ width: `${passStrength.score}%` }}
+                        />
+                      </div>
+                    </div>
+
+                    {/* 3. Confirm Password */}
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-300 light:text-slate-700 mb-1.5">
+                        Повторите Пароль
+                      </label>
+                      <div className="relative">
+                        <Lock className="absolute left-3.5 top-3 w-4 h-4 text-slate-500" />
+                        <input
+                          type="password"
+                          value={confirmPassword}
+                          onChange={(e) => setConfirmPassword(e.target.value)}
+                          placeholder="••••••••"
+                          required
+                          className={`w-full pl-10 pr-4 py-2.5 rounded-xl bg-slate-900/80 border text-slate-100 text-sm focus:outline-none light:bg-slate-50 light:text-slate-900 ${
+                            confirmPassword && confirmPassword !== password
+                              ? 'border-rose-500/80 text-rose-300'
+                              : 'border-slate-700 focus:border-cyan-500'
+                          }`}
+                        />
+                      </div>
+                      {confirmPassword && confirmPassword !== password && (
+                        <p className="text-[11px] text-rose-400 mt-1">Пароли не совпадают</p>
+                      )}
+                    </div>
+
+                    {/* 4. Captcha Box */}
                     <div className="p-3.5 rounded-2xl bg-slate-900/90 border border-slate-800 space-y-2 light:bg-slate-50 light:border-slate-300">
                       <div className="flex items-center justify-between">
                         <span className="text-xs font-semibold text-slate-300 light:text-slate-700 flex items-center gap-1.5">
@@ -365,8 +445,9 @@ export const AuthView: React.FC = () => {
                         <button
                           type="button"
                           onClick={fetchCaptcha}
-                          className="text-[11px] text-cyan-400 hover:underline"
+                          className="text-[11px] text-cyan-400 hover:underline flex items-center gap-1"
                         >
+                          <RefreshCw className="w-3 h-3" />
                           Обновить
                         </button>
                       </div>
@@ -391,17 +472,25 @@ export const AuthView: React.FC = () => {
                       )}
                     </div>
 
+                    {/* 5. Submit Button */}
                     <button
                       type="submit"
-                      disabled={loading || !email || !captchaAnswer}
+                      disabled={
+                        loading ||
+                        !email ||
+                        !password ||
+                        password !== confirmPassword ||
+                        !captchaAnswer
+                      }
                       className="w-full py-3 rounded-xl font-bold text-sm bg-gradient-to-r from-cyan-500 via-indigo-600 to-purple-600 text-white shadow-lg shadow-cyan-500/25 hover:opacity-95 disabled:opacity-50 transition-all flex items-center justify-center gap-2"
                     >
                       <Send className="w-4 h-4" />
-                      <span>{loading ? 'Отправка...' : 'Отправить 6-значный код на Email'}</span>
+                      <span>{loading ? 'Отправка...' : 'Отправить код на Email'}</span>
                     </button>
                   </form>
                 ) : (
-                  <form onSubmit={handleVerifyEmailCode} className="space-y-4">
+                  /* 6. Enter 6-digit verification code */
+                  <form onSubmit={handleVerifyRegisterCode} className="space-y-4">
                     <div>
                       <label className="block text-xs font-semibold text-cyan-400 mb-1.5 flex items-center justify-between">
                         <span>Введите 6-значный код из письма</span>
@@ -431,7 +520,7 @@ export const AuthView: React.FC = () => {
                       className="w-full py-3 rounded-xl font-bold text-sm bg-gradient-to-r from-emerald-500 via-teal-600 to-cyan-600 text-white shadow-lg shadow-emerald-500/25 hover:opacity-95 disabled:opacity-50 transition-all flex items-center justify-center gap-2"
                     >
                       <Check className="w-4 h-4" />
-                      <span>{loading ? 'Проверка...' : 'Подтвердить код и войти'}</span>
+                      <span>{loading ? 'Регистрация...' : 'Завершить регистрацию'}</span>
                     </button>
 
                     <button
@@ -443,15 +532,203 @@ export const AuthView: React.FC = () => {
                       }}
                       className="w-full py-2 text-xs text-slate-400 hover:text-slate-200 transition-colors"
                     >
-                      ← Изменить Email или отправить код заново
+                      ← Изменить данных или отправить код заново
                     </button>
                   </form>
                 )}
               </div>
             )}
 
+            {/* --- LOGIN FORM FLOW --- */}
+            {mode === 'login' && (
+              <div className="space-y-4">
+                {!codeSent ? (
+                  <form onSubmit={handleLoginRequestCode} className="space-y-4">
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-300 light:text-slate-700 mb-1.5">
+                        Электронная Почта (Email)
+                      </label>
+                      <div className="relative">
+                        <Mail className="absolute left-3.5 top-3 w-4 h-4 text-slate-500" />
+                        <input
+                          type="email"
+                          value={email}
+                          onChange={(e) => setEmail(e.target.value)}
+                          placeholder="your_email@domain.com"
+                          required
+                          className="w-full pl-10 pr-4 py-2.5 rounded-xl bg-slate-900/80 border border-slate-700 text-slate-100 text-sm placeholder-slate-500 focus:outline-none focus:border-cyan-500 light:bg-slate-50 light:border-slate-300 light:text-slate-900"
+                        />
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-300 light:text-slate-700 mb-1.5">
+                        Пароль
+                      </label>
+                      <div className="relative">
+                        <Lock className="absolute left-3.5 top-3 w-4 h-4 text-slate-500" />
+                        <input
+                          type="password"
+                          value={password}
+                          onChange={(e) => setPassword(e.target.value)}
+                          placeholder="••••••••"
+                          required
+                          className="w-full pl-10 pr-4 py-2.5 rounded-xl bg-slate-900/80 border border-slate-700 text-slate-100 text-sm placeholder-slate-500 focus:outline-none focus:border-cyan-500 light:bg-slate-50 light:border-slate-300 light:text-slate-900"
+                        />
+                      </div>
+                    </div>
+
+                    {/* Captcha Box */}
+                    <div className="p-3.5 rounded-2xl bg-slate-900/90 border border-slate-800 space-y-2 light:bg-slate-50 light:border-slate-300">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-semibold text-slate-300 light:text-slate-700 flex items-center gap-1.5">
+                          <ShieldCheck className="w-4 h-4 text-cyan-400" />
+                          Проверка от роботов (Капча)
+                        </span>
+                        <button
+                          type="button"
+                          onClick={fetchCaptcha}
+                          className="text-[11px] text-cyan-400 hover:underline flex items-center gap-1"
+                        >
+                          <RefreshCw className="w-3 h-3" />
+                          Обновить
+                        </button>
+                      </div>
+
+                      {captchaData ? (
+                        <div className="flex items-center gap-3">
+                          <div
+                            className="bg-slate-950 p-2 rounded-xl border border-slate-700/80 shrink-0"
+                            dangerouslySetInnerHTML={{ __html: captchaData.svg }}
+                          />
+                          <input
+                            type="number"
+                            value={captchaAnswer}
+                            onChange={(e) => setCaptchaAnswer(e.target.value)}
+                            placeholder="Ответ = ?"
+                            required
+                            className="w-full px-3 py-2.5 rounded-xl bg-slate-950 border border-slate-700 text-cyan-300 font-bold text-center text-base focus:outline-none focus:border-cyan-500"
+                          />
+                        </div>
+                      ) : (
+                        <div className="text-xs text-slate-500 animate-pulse py-2">Загрузка капчи...</div>
+                      )}
+                    </div>
+
+                    <button
+                      type="submit"
+                      disabled={loading || !email || !password || !captchaAnswer}
+                      className="w-full py-3 rounded-xl font-bold text-sm bg-gradient-to-r from-cyan-500 via-indigo-600 to-purple-600 text-white shadow-lg shadow-cyan-500/25 hover:opacity-95 disabled:opacity-50 transition-all flex items-center justify-center gap-2"
+                    >
+                      <Send className="w-4 h-4" />
+                      <span>{loading ? 'Проверка...' : 'Войти (Запросить код на Email)'}</span>
+                    </button>
+                  </form>
+                ) : (
+                  <form onSubmit={handleVerifyLoginCode} className="space-y-4">
+                    <div>
+                      <label className="block text-xs font-semibold text-cyan-400 mb-1.5 flex items-center justify-between">
+                        <span>Введите 6-значный код из письма</span>
+                        {debugCode && (
+                          <span className="text-[10px] bg-cyan-950/80 text-cyan-300 px-2 py-0.5 rounded border border-cyan-800 font-mono">
+                            Тест-код: {debugCode}
+                          </span>
+                        )}
+                      </label>
+                      <div className="relative">
+                        <KeyRound className="absolute left-3.5 top-3 w-4 h-4 text-cyan-400" />
+                        <input
+                          type="text"
+                          maxLength={6}
+                          value={emailCode}
+                          onChange={(e) => setEmailCode(e.target.value.replace(/[^0-9]/g, ''))}
+                          placeholder="123456"
+                          required
+                          className="w-full pl-10 pr-4 py-3 rounded-xl bg-slate-900 border-2 border-cyan-500/80 text-cyan-300 font-mono font-bold tracking-widest text-center text-lg focus:outline-none focus:border-cyan-400 light:bg-white light:text-slate-900"
+                        />
+                      </div>
+                    </div>
+
+                    <button
+                      type="submit"
+                      disabled={loading || emailCode.length < 6}
+                      className="w-full py-3 rounded-xl font-bold text-sm bg-gradient-to-r from-emerald-500 via-teal-600 to-cyan-600 text-white shadow-lg shadow-emerald-500/25 hover:opacity-95 disabled:opacity-50 transition-all flex items-center justify-center gap-2"
+                    >
+                      <Check className="w-4 h-4" />
+                      <span>{loading ? 'Вход...' : 'Подтвердить код и войти'}</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setCodeSent(false);
+                        setEmailCode('');
+                        fetchCaptcha();
+                      }}
+                      className="w-full py-2 text-xs text-slate-400 hover:text-slate-200 transition-colors"
+                    >
+                      ← Вернуться назад или отправить код заново
+                    </button>
+                  </form>
+                )}
+              </div>
+            )}
+
+            {/* --- TELEGRAM DEEP LINK FLOW --- */}
+            {mode === 'telegram' && (
+              <div className="space-y-4 text-center">
+                <div className="p-4 rounded-2xl bg-slate-900/90 border border-slate-800 space-y-3 text-left light:bg-slate-50 light:border-slate-200">
+                  <div className="flex items-center gap-2 text-cyan-400 font-bold text-sm">
+                    <Bot className="w-5 h-5" />
+                    <span>Быстрый вход через Telegram Диплинк</span>
+                  </div>
+                  <p className="text-xs text-slate-400 light:text-slate-600">
+                    Нажмите кнопку ниже, чтобы сгенерировать индивидуальную ссылку диплинка. Перейдите в бота и подтвердите вход за 1 клик.
+                  </p>
+                </div>
+
+                {!tgDeepLink ? (
+                  <button
+                    type="button"
+                    onClick={handleGenerateTelegramLink}
+                    disabled={loading}
+                    className="w-full py-3 rounded-xl font-bold text-sm bg-gradient-to-r from-cyan-500 via-indigo-600 to-purple-600 text-white shadow-lg shadow-cyan-500/25 hover:opacity-95 transition-all flex items-center justify-center gap-2"
+                  >
+                    <Send className="w-4 h-4" />
+                    <span>{loading ? 'Генерация ссылок...' : 'Сгенерировать Telegram Диплинк'}</span>
+                  </button>
+                ) : (
+                  <div className="space-y-3 p-4 rounded-2xl bg-slate-900 border border-cyan-500/40 text-left">
+                    <div className="text-xs text-slate-300 font-semibold flex items-center justify-between">
+                      <span>Ваш код авторизации:</span>
+                      <span className="font-mono text-cyan-400 font-bold text-sm bg-cyan-950 px-2 py-0.5 rounded border border-cyan-800">
+                        {tgCode}
+                      </span>
+                    </div>
+
+                    <a
+                      href={tgDeepLink}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="w-full py-3 rounded-xl font-bold text-sm bg-gradient-to-r from-cyan-500 to-blue-600 text-white shadow-lg shadow-cyan-500/25 hover:opacity-95 transition-all flex items-center justify-center gap-2"
+                    >
+                      <ExternalLink className="w-4 h-4" />
+                      <span>📱 Открыть Telegram Бота</span>
+                    </a>
+
+                    {tgPollingActive && (
+                      <div className="flex items-center justify-center gap-2 text-xs text-cyan-400 animate-pulse pt-2">
+                        <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                        <span>Ожидаем нажатия кнопки «Старт» в Telegram боте...</span>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+
             <div className="text-center text-[11px] text-slate-500">
-              Демо-вход администратора: <code className="text-cyan-400">admin@kmbp.play</code> / любая комбинация
+              Демо-вход администратора: <code className="text-cyan-400">admin@kmbp.play</code> / любой пароль
             </div>
           </div>
         )}

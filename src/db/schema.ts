@@ -2,9 +2,6 @@
 // Can be executed directly in external PostgreSQL database or auto-initialized via server.ts
 
 export const INITIAL_POSTGRES_SCHEMA_SQL = `
--- Create extension for UUID generation if supported
-CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
-
 -- 1. Users Table
 CREATE TABLE IF NOT EXISTS kmbp_users (
     id VARCHAR(64) PRIMARY KEY,
@@ -77,10 +74,10 @@ CREATE TABLE IF NOT EXISTS kmbp_community_members (
 -- 6. Chat Messages (Global, Community, Lobby)
 CREATE TABLE IF NOT EXISTS kmbp_chat_messages (
     id VARCHAR(64) PRIMARY KEY,
-    chat_context VARCHAR(20) NOT NULL, -- 'global', 'community', 'lobby'
+    chat_context VARCHAR(20) NOT NULL,
     context_id VARCHAR(64),
     sender_id VARCHAR(64) REFERENCES kmbp_users(id) ON DELETE SET NULL,
-    message_type VARCHAR(20) DEFAULT 'text', -- 'text', 'voice', 'drawing'
+    message_type VARCHAR(20) DEFAULT 'text',
     content TEXT NOT NULL,
     duration INT DEFAULT 0,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,

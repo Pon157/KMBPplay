@@ -3,6 +3,15 @@ import { User, LoginSecurityLog } from '../types';
 
 export type OnboardingStep = 'auth' | 'nickname' | 'telegram' | 'avatar' | 'complete';
 
+export const PRESET_AVATARS = [
+  'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=150&auto=format&fit=crop&q=80',
+  'https://images.unsplash.com/photo-1563089145-599997674d42?w=150&auto=format&fit=crop&q=80',
+  'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
+  'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&auto=format&fit=crop&q=80',
+  'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=150&auto=format&fit=crop&q=80',
+  'https://images.unsplash.com/photo-1517841905240-472988babdf9?w=150&auto=format&fit=crop&q=80',
+];
+
 interface AuthContextType {
   user: User | null;
   onboardingStep: OnboardingStep;
@@ -13,6 +22,7 @@ interface AuthContextType {
   resetPassword: (email: string) => Promise<{ success: boolean; message?: string }>;
   sendEmailCode: (email: string, captchaId: string, captchaAnswer: string) => Promise<{ success: boolean; message: string; debugCode?: string }>;
   loginWithEmailCode: (email: string, code: string, nickname?: string) => Promise<{ success: boolean; error?: string }>;
+  loginWithTelegramUser: (userData: Partial<User>) => void;
   completeNicknameStep: (nickname: string, username: string) => void;
   completeTelegramStep: (telegramUsername: string) => void;
   completeAvatarStep: (avatarUrl: string) => void;
@@ -303,6 +313,41 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
+  const loginWithTelegramUser = (userData: Partial<User>) => {
+    const fullUser: User = {
+      id: userData.id || `tg_${Date.now()}`,
+      email: userData.email || `${userData.username || 'tg_user'}@telegram.org`,
+      nickname: userData.nickname || userData.username || 'Telegram Пользователь',
+      username: userData.username || `tg_${Date.now()}`,
+      avatar: userData.avatar || PRESET_AVATARS[0],
+      bio: 'Пользователь вошел через Telegram бот КМБП',
+      role: 'user',
+      createdAt: new Date().toISOString(),
+      isOnline: true,
+      lastActive: new Date().toISOString(),
+      telegramUsername: userData.telegramUsername || userData.username,
+      telegramVerified: true,
+      ipAddress: '185.220.101.4',
+      isBanned: false,
+      friends: userData.friends || [],
+    };
+
+    setUser(fullUser);
+    setOnboardingStep('complete');
+
+    const newLog: LoginSecurityLog = {
+      id: `log-${Date.now()}`,
+      userId: fullUser.id,
+      timestamp: new Date().toISOString(),
+      ipAddress: '185.220.101.4',
+      device: 'Telegram DeepLink Auth',
+      action: 'telegram_linked',
+      status: 'success',
+      details: `Успешный вход через Telegram Диплинк: @${fullUser.telegramUsername}`,
+    };
+    setSecurityLogs((prev) => [newLog, ...prev]);
+  };
+
   const completeNicknameStep = (nickname: string, username: string) => {
     if (!user) return;
     const updated = {
@@ -365,6 +410,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         resetPassword,
         sendEmailCode,
         loginWithEmailCode,
+        loginWithTelegramUser,
         completeNicknameStep,
         completeTelegramStep,
         completeAvatarStep,

@@ -409,10 +409,11 @@ async function startServer() {
         await client.query(`
           INSERT INTO kmbp_users (id, email, nickname, username, is_online)
           VALUES ($1, $2, $3, $4, true)
-          ON CONFLICT (id) DO UPDATE SET
+          ON CONFLICT (email) DO UPDATE SET
             nickname = EXCLUDED.nickname,
             is_online = true,
-            last_active = CURRENT_TIMESTAMP;
+            last_active = CURRENT_TIMESTAMP
+          RETURNING id;
         `, [
           userId,
           cleanEmail,

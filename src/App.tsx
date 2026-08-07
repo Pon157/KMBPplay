@@ -16,10 +16,65 @@ import { AdminPanel } from './components/admin/AdminPanel';
 import { ShortcutsModal } from './components/ShortcutsModal';
 import { LegalModal } from './components/LegalModal';
 import { CaptchaModal } from './components/CaptchaModal';
+import { Bell, CheckCircle } from 'lucide-react';
+
+const NotificationsView: React.FC = () => {
+  const { notifications, markNotificationAsRead, clearAllNotifications } = useData();
+
+  return (
+    <div className="max-w-4xl mx-auto space-y-4 animate-fade-in">
+      <div className="flex items-center justify-between pb-3 border-b border-slate-800 light:border-slate-200">
+        <div className="flex items-center gap-2 text-cyan-400 light:text-indigo-600 font-bold text-lg">
+          <Bell className="w-5 h-5" />
+          <span>Центр Уведомлений КМБП</span>
+        </div>
+        {notifications.length > 0 && (
+          <button
+            onClick={clearAllNotifications}
+            className="px-3 py-1.5 rounded-lg text-xs bg-slate-800 hover:bg-slate-700 text-slate-300 light:bg-slate-200 light:text-slate-800 transition-colors"
+          >
+            Очистить все
+          </button>
+        )}
+      </div>
+
+      {notifications.length === 0 ? (
+        <div className="p-8 text-center rounded-2xl bg-slate-900/50 border border-slate-800 text-slate-400 light:bg-white light:border-slate-200">
+          У вас пока нет новых уведомлений.
+        </div>
+      ) : (
+        <div className="space-y-2">
+          {notifications.map((n) => (
+            <div
+              key={n.id}
+              onClick={() => markNotificationAsRead(n.id)}
+              className={`p-4 rounded-xl border transition-all cursor-pointer flex items-start justify-between gap-3 ${
+                n.read
+                  ? 'bg-slate-900/40 border-slate-800/80 text-slate-400 light:bg-slate-50 light:border-slate-200'
+                  : 'bg-slate-900 border-cyan-500/40 text-slate-100 shadow-md shadow-cyan-500/5 light:bg-white light:border-indigo-300'
+              }`}
+            >
+              <div>
+                <div className="font-bold text-sm text-cyan-400 light:text-indigo-600">{n.title}</div>
+                <p className="text-xs text-slate-300 light:text-slate-700 mt-1">{n.message}</p>
+                <div className="text-[10px] text-slate-500 mt-2">
+                  {new Date(n.timestamp).toLocaleString('ru-RU')}
+                </div>
+              </div>
+              {!n.read && (
+                <CheckCircle className="w-4 h-4 text-cyan-400 shrink-0 mt-0.5" />
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+};
 
 const MainLayout: React.FC = () => {
   const { user, onboardingStep, isAuthLoading } = useAuth();
-  const { currentView, setCurrentView, isCaptchaRequired, triggerCaptchaChallenge } = useData();
+  const { currentView, setCurrentView, isCaptchaRequired } = useData();
 
   const [isShortcutsOpen, setIsShortcutsOpen] = useState(false);
   const [isLegalOpen, setIsLegalOpen] = useState(false);
@@ -42,19 +97,23 @@ const MainLayout: React.FC = () => {
       
       {/* Top Header */}
       <Header
-        onOpenShortcuts={() => setIsShortcutsOpen(true)}
+        activeTab={currentView}
+        setActiveTab={setCurrentView}
+        onOpenSearch={() => setCurrentView('search')}
+        onOpenHotkeys={() => setIsShortcutsOpen(true)}
         onOpenLegal={() => setIsLegalOpen(true)}
       />
 
       {/* Navigation Sub-Header */}
-      <Navbar />
+      <Navbar activeTab={currentView} setActiveTab={setCurrentView} />
 
       {/* Main Container View Area */}
       <main className="p-4 sm:p-6 md:p-8 max-w-7xl mx-auto min-h-[calc(100vh-160px)]">
-        {currentView === 'chat' && <GlobalChat />}
+        {(currentView === 'chat' || currentView === 'global_chat') && <GlobalChat />}
         {currentView === 'games' && <GamesView />}
         {currentView === 'communities' && <CommunityView />}
         {currentView === 'search' && <SearchView />}
+        {currentView === 'notifications' && <NotificationsView />}
         {currentView === 'profile' && <ProfileView />}
         {currentView === 'admin' && <AdminPanel />}
       </main>
