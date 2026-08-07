@@ -564,7 +564,7 @@ export const AuthView: React.FC = () => {
                             className="h-10 rounded-lg border border-slate-700 bg-slate-950 px-2 shrink-0 object-contain"
                           />
                           <input
-                            type="number"
+                            type="text"
                             value={captchaAnswer}
                             onChange={(e) => setCaptchaAnswer(e.target.value)}
                             placeholder="Ответ = ?"
@@ -722,7 +722,7 @@ export const AuthView: React.FC = () => {
                             className="h-10 rounded-lg border border-slate-700 bg-slate-950 px-2 shrink-0 object-contain"
                           />
                           <input
-                            type="number"
+                            type="text"
                             value={captchaAnswer}
                             onChange={(e) => setCaptchaAnswer(e.target.value)}
                             placeholder="Ответ = ?"
@@ -841,7 +841,7 @@ export const AuthView: React.FC = () => {
                             className="h-10 rounded-lg border border-slate-700 bg-slate-950 px-2 shrink-0 object-contain"
                           />
                           <input
-                            type="number"
+                            type="text"
                             value={captchaAnswer}
                             onChange={(e) => setCaptchaAnswer(e.target.value)}
                             placeholder="Ответ = ?"

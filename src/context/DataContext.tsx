@@ -30,6 +30,12 @@ interface DataContextType {
   isCaptchaRequired: boolean;
   triggerCaptchaChallenge: () => void;
   
+  // User Profile Modal
+  allUsers: User[];
+  selectedProfileUser: User | null;
+  openUserProfile: (userOrId: User | string) => void;
+  closeUserProfile: () => void;
+  
   // Actions
   createCommunity: (name: string, username: string, description: string, avatar: string, tags: string[], isPrivate: boolean) => Community;
   joinCommunity: (communityId: string) => void;
@@ -180,6 +186,60 @@ const DEFAULT_SIGNATURES: WallSignature[] = [];
 
 const DEFAULT_NOTIFICATIONS: NotificationItem[] = [];
 
+const DEFAULT_ALL_USERS: User[] = [
+  {
+    id: 'user-admin-1',
+    email: 'admin@kmbp.play',
+    nickname: 'КМБП_Главный_Админ',
+    username: 'kmbp_owner',
+    avatar: 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=150&auto=format&fit=crop&q=80',
+    bio: 'Главный администратор игровой платформы комьюнити ботов поддержки КМБП.',
+    role: 'admin',
+    createdAt: new Date().toISOString(),
+    isOnline: true,
+    lastActive: new Date().toISOString(),
+    telegramUsername: 'kmbp_support_bot',
+    telegramVerified: true,
+    ipAddress: '185.220.101.4',
+    isBanned: false,
+    friends: ['user-2', 'user-3'],
+  },
+  {
+    id: 'user-2',
+    email: 'support_bot1@kmbp.play',
+    nickname: 'БотПоддержки_Альфа',
+    username: 'bot_alpha',
+    avatar: 'https://images.unsplash.com/photo-1563089145-599997674d42?w=150&auto=format&fit=crop&q=80',
+    bio: 'Бот автоматической технической поддержки. Играю в шахматы и викторину.',
+    role: 'user',
+    createdAt: new Date().toISOString(),
+    isOnline: true,
+    lastActive: new Date().toISOString(),
+    telegramUsername: 'bot_alpha_support',
+    telegramVerified: true,
+    ipAddress: '185.220.101.5',
+    isBanned: false,
+    friends: ['user-admin-1'],
+  },
+  {
+    id: 'user-3',
+    email: 'cyber_bot@kmbp.play',
+    nickname: 'Кибер_Бот_КМБП',
+    username: 'cyber_bot',
+    avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
+    bio: 'Игровой бот КМБП. Рейды в D&D и турниры по морскому бою.',
+    role: 'user',
+    createdAt: new Date().toISOString(),
+    isOnline: true,
+    lastActive: new Date().toISOString(),
+    telegramUsername: 'cyber_kmbp_bot',
+    telegramVerified: true,
+    ipAddress: '185.220.101.6',
+    isBanned: false,
+    friends: ['user-admin-1'],
+  },
+];
+
 const DataContext = createContext<DataContextType | undefined>(undefined);
 
 export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -241,6 +301,62 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [activeLobby, setActiveLobby] = useState<GameLobby | null>(null);
   const [currentView, setCurrentView] = useState<string>('games');
   const [isCaptchaRequired, setIsCaptchaRequired] = useState<boolean>(false);
+
+  // User Profile Modal State
+  const [allUsers, setAllUsers] = useState<User[]>(() => {
+    const saved = localStorage.getItem('kmbp_all_users');
+    return saved ? JSON.parse(saved) : DEFAULT_ALL_USERS;
+  });
+  const [selectedProfileUser, setSelectedProfileUser] = useState<User | null>(null);
+
+  // Keep current logged-in user in allUsers list
+  useEffect(() => {
+    if (user) {
+      setAllUsers((prev) => {
+        const existingIdx = prev.findIndex((u) => u.id === user.id);
+        if (existingIdx >= 0) {
+          const copy = [...prev];
+          copy[existingIdx] = { ...copy[existingIdx], ...user };
+          return copy;
+        }
+        return [...prev, user];
+      });
+    }
+  }, [user]);
+
+  useEffect(() => {
+    localStorage.setItem('kmbp_all_users', JSON.stringify(allUsers));
+  }, [allUsers]);
+
+  const openUserProfile = (userOrId: User | string) => {
+    if (typeof userOrId === 'object' && userOrId !== null) {
+      setSelectedProfileUser(userOrId);
+      return;
+    }
+    const target = allUsers.find((u) => u.id === userOrId || u.username === userOrId);
+    if (target) {
+      setSelectedProfileUser(target);
+    } else {
+      // Create fallback profile card if user id or string was passed
+      setSelectedProfileUser({
+        id: typeof userOrId === 'string' ? userOrId : 'user-unknown',
+        email: 'user@kmbp.play',
+        nickname: typeof userOrId === 'string' ? userOrId : 'Участник КМБП',
+        username: typeof userOrId === 'string' ? userOrId.replace(/\s+/g, '_').toLowerCase() : 'kmbp_user',
+        avatar: 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=150&auto=format&fit=crop&q=80',
+        bio: 'Участник игровой платформы и сообщества КМБП.',
+        role: 'user',
+        createdAt: new Date().toISOString(),
+        isOnline: true,
+        lastActive: new Date().toISOString(),
+        isBanned: false,
+      });
+    }
+  };
+
+  const closeUserProfile = () => {
+    setSelectedProfileUser(null);
+  };
 
   const triggerCaptchaChallenge = () => {
     setIsCaptchaRequired(true);
@@ -865,6 +981,10 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setCurrentView,
         isCaptchaRequired,
         triggerCaptchaChallenge,
+        allUsers,
+        selectedProfileUser,
+        openUserProfile,
+        closeUserProfile,
         createCommunity,
         joinCommunity,
         leaveCommunity,

@@ -13,6 +13,7 @@ import { SearchView } from './components/search/SearchView';
 import { ProfileView } from './components/profile/ProfileView';
 import { AdminPanel } from './components/admin/AdminPanel';
 
+import { UserProfileModal } from './components/profile/UserProfileModal';
 import { ShortcutsModal } from './components/ShortcutsModal';
 import { LegalModal } from './components/LegalModal';
 import { CaptchaModal } from './components/CaptchaModal';
@@ -74,7 +75,7 @@ const NotificationsView: React.FC = () => {
 
 const MainLayout: React.FC = () => {
   const { user, onboardingStep, isAuthLoading } = useAuth();
-  const { currentView, setCurrentView, isCaptchaRequired } = useData();
+  const { currentView, setCurrentView, isCaptchaRequired, selectedProfileUser, closeUserProfile } = useData();
 
   const [isShortcutsOpen, setIsShortcutsOpen] = useState(false);
   const [isLegalOpen, setIsLegalOpen] = useState(false);
@@ -136,6 +137,9 @@ const MainLayout: React.FC = () => {
       </footer>
 
       {/* Modals */}
+      {selectedProfileUser && (
+        <UserProfileModal user={selectedProfileUser} onClose={closeUserProfile} />
+      )}
       {isShortcutsOpen && <ShortcutsModal isOpen={isShortcutsOpen} onClose={() => setIsShortcutsOpen(false)} />}
       {isLegalOpen && <LegalModal isOpen={isLegalOpen} onClose={() => setIsLegalOpen(false)} />}
       {isCaptchaRequired && (

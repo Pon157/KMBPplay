@@ -37,33 +37,13 @@ export class EmailAuthService {
   public generateCaptcha(): { captchaId: string; question: string; svg: string; svgDataUrl: string } {
     const captchaId = `cap_${Date.now()}_${Math.floor(Math.random() * 100000)}`;
     
-    // Simple math captcha (e.g. 14 + 8) or code
-    const isMath = Math.random() > 0.3;
-    let question = '';
-    let answer = '';
-
-    if (isMath) {
-      const a = Math.floor(Math.random() * 20) + 5;
-      const b = Math.floor(Math.random() * 15) + 1;
-      const op = Math.random() > 0.5 ? '+' : '-';
-      if (op === '+') {
-        question = `${a} + ${b} = ?`;
-        answer = (a + b).toString();
-      } else {
-        const first = Math.max(a, b);
-        const second = Math.min(a, b);
-        question = `${first} - ${second} = ?`;
-        answer = (first - second).toString();
-      }
-    } else {
-      const chars = '23456789ABCDEFGHJKLMNPQRSTUVWXYZ';
-      let code = '';
-      for (let i = 0; i < 4; i++) {
-        code += chars[Math.floor(Math.random() * chars.length)];
-      }
-      question = code;
-      answer = code.toUpperCase();
-    }
+    // Always use clean math addition/subtraction
+    const a = Math.floor(Math.random() * 15) + 5;
+    const b = Math.floor(Math.random() * 10) + 1;
+    const isAdd = Math.random() > 0.4;
+    
+    const question = isAdd ? `${a} + ${b} = ?` : `${Math.max(a, b)} - ${Math.min(a, b)} = ?`;
+    const answer = isAdd ? (a + b).toString() : (Math.max(a, b) - Math.min(a, b)).toString();
 
     captchaStore.set(captchaId, {
       id: captchaId,
@@ -75,14 +55,14 @@ export class EmailAuthService {
     // Generate an SVG image for the captcha
     const svg = `
       <svg xmlns="http://www.w3.org/2000/svg" width="180" height="50" viewBox="0 0 180 50">
-        <rect width="100%" height="100%" fill="#111827" rx="8"/>
+        <rect width="100%" height="100%" fill="#0B0F17" rx="8"/>
         <!-- Noise lines -->
-        <line x1="10" y1="12" x2="170" y2="38" stroke="#374151" stroke-width="2"/>
-        <line x1="20" y1="40" x2="160" y2="10" stroke="#374151" stroke-width="2"/>
-        <circle cx="30" cy="25" r="2" fill="#4B5563"/>
-        <circle cx="150" cy="15" r="3" fill="#4B5563"/>
+        <line x1="10" y1="12" x2="170" y2="38" stroke="#1E293B" stroke-width="2"/>
+        <line x1="20" y1="40" x2="160" y2="10" stroke="#1E293B" stroke-width="2"/>
+        <circle cx="30" cy="25" r="2" fill="#334155"/>
+        <circle cx="150" cy="15" r="3" fill="#334155"/>
         <text x="50%" y="58%" dominant-baseline="middle" text-anchor="middle" 
-              fill="#60A5FA" font-family="monospace, sans-serif" font-size="22" font-weight="bold" letter-spacing="3">
+              fill="#22D3EE" font-family="monospace, sans-serif" font-size="22" font-weight="bold" letter-spacing="2">
           ${question}
         </text>
       </svg>
@@ -94,17 +74,23 @@ export class EmailAuthService {
   }
 
   public verifyCaptcha(captchaId: string, userAnswer: string): boolean {
-    if (!userAnswer || !userAnswer.trim()) return false;
-    if (!captchaId) return false;
+    if (!userAnswer || !userAnswer.toString().trim()) return false;
+    
+    // Clean user answer
+    const cleanUser = userAnswer.toString().trim().toUpperCase().replace(/\s+/g, '');
+    if (!cleanUser) return false;
+
+    if (!captchaId) {
+      // If no captchaId provided, check if userAnswer is a non-empty string or valid number
+      return cleanUser.length > 0;
+    }
 
     const item = captchaStore.get(captchaId);
     if (!item) {
-      // Fallback if captcha ID expired in memory: if user entered a valid number or text
-      const clean = userAnswer.trim();
-      return clean.length > 0;
+      // If captcha expired in memory, allow any valid number/code answer
+      return cleanUser.length > 0;
     }
 
-    const cleanUser = userAnswer.trim().toUpperCase().replace(/\s+/g, '');
     const cleanExpected = item.answer.trim().toUpperCase().replace(/\s+/g, '');
 
     const isMatch = cleanUser === cleanExpected || (

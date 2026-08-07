@@ -75,7 +75,7 @@ export const CaptchaModal: React.FC<CaptchaModalProps> = ({ isOpen, onSuccess })
 
             <div className="flex gap-2">
               <input
-                type="number"
+                type="text"
                 value={userAnswer}
                 onChange={(e) => setUserAnswer(e.target.value)}
                 placeholder="Ваш ответ"

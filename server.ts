@@ -486,17 +486,11 @@ async function startServer() {
     const s3Bucket = process.env.S3_BUCKET_NAME;
     const s3Endpoint = process.env.S3_ENDPOINT;
 
-    // If S3 credentials are functional in .env, construct the S3 URL structure
-    if (s3Bucket && s3Endpoint) {
-      const cleanName = (fileName || 'avatar.png').replace(/[^a-zA-Z0-9_.-]/g, '_');
-      const s3Url = `${s3Endpoint.replace(/\/$/, '')}/${s3Bucket}/avatars/${Date.now()}_${cleanName}`;
-      console.log(`[S3 Upload] Uploaded avatar to S3 bucket: ${s3Url}`);
-      return res.json({ success: true, avatarUrl: s3Url, uploadedTo: 's3' });
+    // If fileData is passed, always return the base64 Data URL so images display reliably in all browsers
+    if (fileData) {
+      console.log('[Upload] Stored avatar image as Data URL');
+      return res.json({ success: true, avatarUrl: fileData, uploadedTo: 'local_data' });
     }
-
-    // Fallback: Store and return the high quality base64 image
-    console.log('[Upload] Stored avatar file as high quality Data URL');
-    return res.json({ success: true, avatarUrl: fileData, uploadedTo: 'local_data' });
   });
 
   // Password Reset - Request Code

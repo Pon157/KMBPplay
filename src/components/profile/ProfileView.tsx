@@ -13,7 +13,7 @@ import {
   KeyRound,
   FileText
 } from 'lucide-react';
-import { useAuth } from '../../context/AuthContext';
+import { useAuth, PRESET_AVATARS } from '../../context/AuthContext';
 import { useData } from '../../context/DataContext';
 
 export const ProfileView: React.FC = () => {
@@ -24,6 +24,14 @@ export const ProfileView: React.FC = () => {
   const [nickname, setNickname] = useState(user?.nickname || '');
   const [bio, setBio] = useState(user?.bio || '');
   const [avatar, setAvatar] = useState(user?.avatar || '');
+
+  React.useEffect(() => {
+    if (user) {
+      setNickname(user.nickname || '');
+      setBio(user.bio || '');
+      setAvatar(user.avatar || '');
+    }
+  }, [user]);
 
   const [activeTab, setActiveTab] = useState<'wall' | 'security' | 'friends'>('wall');
   const [newSigContent, setNewSigContent] = useState('');
@@ -39,6 +47,11 @@ export const ProfileView: React.FC = () => {
       avatar,
     });
     setIsEditing(false);
+  };
+
+  const handleAvatarChange = (newAvatarUrl: string) => {
+    setAvatar(newAvatarUrl);
+    updateProfile({ avatar: newAvatarUrl });
   };
 
   const handlePostSignature = (e: React.FormEvent) => {
@@ -143,35 +156,58 @@ export const ProfileView: React.FC = () => {
 
               <div>
                 <label className="block text-xs font-semibold text-slate-300 light:text-slate-700 mb-1">
-                  Загрузить файл аватара в S3
+                  Загрузка или выбор аватара
                 </label>
-                <input
-                  type="file"
-                  accept="image/*"
-                  onChange={async (e) => {
-                    const file = e.target.files?.[0];
-                    if (!file) return;
-                    const reader = new FileReader();
-                    reader.onload = async () => {
-                      const res = await fetch('/api/upload/avatar', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ fileData: reader.result, fileName: file.name }),
-                      });
-                      const data = await res.json();
-                      if (data.avatarUrl) setAvatar(data.avatarUrl);
-                    };
-                    reader.readAsDataURL(file);
-                  }}
-                  className="block w-full text-xs text-slate-400 file:mr-2 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-cyan-500/20 file:text-cyan-300 cursor-pointer"
-                />
-                <input
-                  type="text"
-                  value={avatar}
-                  onChange={(e) => setAvatar(e.target.value)}
-                  placeholder="или URL изображения..."
-                  className="w-full mt-2 px-3.5 py-2 rounded-xl bg-slate-900 border border-slate-700 text-slate-100 text-xs focus:outline-none focus:border-cyan-500 light:bg-slate-50 light:border-slate-300 light:text-slate-900"
-                />
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="file"
+                      accept="image/*"
+                      onChange={async (e) => {
+                        const file = e.target.files?.[0];
+                        if (!file) return;
+                        const reader = new FileReader();
+                        reader.onload = async () => {
+                          const res = await fetch('/api/upload/avatar', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ fileData: reader.result, fileName: file.name }),
+                          });
+                          const data = await res.json();
+                          if (data.avatarUrl) {
+                            handleAvatarChange(data.avatarUrl);
+                          }
+                        };
+                        reader.readAsDataURL(file);
+                      }}
+                      className="block w-full text-xs text-slate-400 file:mr-2 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-cyan-500/20 file:text-cyan-300 cursor-pointer"
+                    />
+                  </div>
+                  
+                  <div className="text-[11px] text-slate-400">Или выберите один из готовых аватаров:</div>
+                  <div className="flex flex-wrap gap-2 pt-1">
+                    {PRESET_AVATARS.map((preset, idx) => (
+                      <button
+                        type="button"
+                        key={idx}
+                        onClick={() => handleAvatarChange(preset)}
+                        className={`w-10 h-10 rounded-xl overflow-hidden border-2 transition-all ${
+                          avatar === preset ? 'border-cyan-400 scale-105 shadow-md shadow-cyan-500/30' : 'border-slate-800 hover:border-slate-600 opacity-70 hover:opacity-100'
+                        }`}
+                      >
+                        <img src={preset} alt={`Avatar ${idx + 1}`} className="w-full h-full object-cover" />
+                      </button>
+                    ))}
+                  </div>
+
+                  <input
+                    type="text"
+                    value={avatar}
+                    onChange={(e) => handleAvatarChange(e.target.value)}
+                    placeholder="или вставьте прямую ссылку URL..."
+                    className="w-full mt-1 px-3.5 py-2 rounded-xl bg-slate-900 border border-slate-700 text-slate-100 text-xs focus:outline-none focus:border-cyan-500 light:bg-slate-50 light:border-slate-300 light:text-slate-900"
+                  />
+                </div>
               </div>
             </div>
 
