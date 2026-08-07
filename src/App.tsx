@@ -18,7 +18,7 @@ import { LegalModal } from './components/LegalModal';
 import { CaptchaModal } from './components/CaptchaModal';
 
 const MainLayout: React.FC = () => {
-  const { user, isAuthLoading } = useAuth();
+  const { user, onboardingStep, isAuthLoading } = useAuth();
   const { currentView, setCurrentView, isCaptchaRequired, triggerCaptchaChallenge } = useData();
 
   const [isShortcutsOpen, setIsShortcutsOpen] = useState(false);
@@ -32,8 +32,8 @@ const MainLayout: React.FC = () => {
     );
   }
 
-  // If unauthenticated or in middle of 4-step registration onboarding
-  if (!user || user.onboardingStep !== 'completed') {
+  // If unauthenticated or in middle of registration onboarding
+  if (!user || onboardingStep !== 'complete') {
     return <AuthView />;
   }
 

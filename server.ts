@@ -90,7 +90,7 @@ if (process.env.DATABASE_URL) {
 
 async function startServer() {
   const app = express();
-  const PORT = 3000;
+  const PORT = parseInt(process.env.PORT || '3223', 10);
 
   app.use(express.json({ limit: '20mb' }));
 

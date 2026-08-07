@@ -11,6 +11,8 @@ interface AuthContextType {
   login: (email: string, pass: string) => Promise<{ success: boolean; error?: string }>;
   register: (email: string, pass: string) => Promise<{ success: boolean; error?: string }>;
   resetPassword: (email: string) => Promise<{ success: boolean; message?: string }>;
+  sendEmailCode: (email: string, captchaId: string, captchaAnswer: string) => Promise<{ success: boolean; message: string; debugCode?: string }>;
+  loginWithEmailCode: (email: string, code: string, nickname?: string) => Promise<{ success: boolean; error?: string }>;
   completeNicknameStep: (nickname: string, username: string) => void;
   completeTelegramStep: (telegramUsername: string) => void;
   completeAvatarStep: (avatarUrl: string) => void;
@@ -229,6 +231,78 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     };
   };
 
+  const sendEmailCode = async (email: string, captchaId: string, captchaAnswer: string) => {
+    try {
+      const response = await fetch('/api/auth/send-email-code', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, captchaId, captchaAnswer }),
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        return { success: false, message: data.error || 'Ошибка отправки кода' };
+      }
+      return { success: true, message: data.message, debugCode: data.debugCode };
+    } catch (err: any) {
+      return { success: false, message: err.message || 'Ошибка сети при отправке письма' };
+    }
+  };
+
+  const loginWithEmailCode = async (email: string, code: string, nickname?: string) => {
+    try {
+      const response = await fetch('/api/auth/verify-email-code', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, code, nickname }),
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        return { success: false, error: data.error || 'Ошибка проверки кода' };
+      }
+
+      if (data.user) {
+        const fullUser: User = {
+          id: data.user.id,
+          email: data.user.email,
+          nickname: data.user.nickname,
+          username: data.user.username,
+          avatar: data.user.avatar,
+          bio: 'Игрок платформы КМБП',
+          role: data.user.role || 'user',
+          createdAt: new Date().toISOString(),
+          isOnline: true,
+          lastActive: new Date().toISOString(),
+          telegramVerified: Boolean(data.user.telegramVerified),
+          telegramUsername: data.user.telegramUsername,
+          ipAddress: '185.220.101.4',
+          isBanned: false,
+          friends: [],
+        };
+
+        setUser(fullUser);
+        setOnboardingStep('complete');
+
+        const newLog: LoginSecurityLog = {
+          id: `log-${Date.now()}`,
+          userId: fullUser.id,
+          timestamp: new Date().toISOString(),
+          ipAddress: '185.220.101.4',
+          device: 'Browser Email Auth',
+          action: 'login',
+          status: 'success',
+          details: `Авторизация по Email коду: ${fullUser.email}`,
+        };
+        setSecurityLogs((prev) => [newLog, ...prev]);
+
+        return { success: true };
+      }
+
+      return { success: false, error: 'Пользователь не найден' };
+    } catch (err: any) {
+      return { success: false, error: err.message || 'Ошибка сервера при авторизации' };
+    }
+  };
+
   const completeNicknameStep = (nickname: string, username: string) => {
     if (!user) return;
     const updated = {
@@ -289,6 +363,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         login,
         register,
         resetPassword,
+        sendEmailCode,
+        loginWithEmailCode,
         completeNicknameStep,
         completeTelegramStep,
         completeAvatarStep,

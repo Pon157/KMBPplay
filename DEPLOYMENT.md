@@ -44,9 +44,9 @@ nano .env
 # -----------------------------------------------------------------
 # 1. ОСНОВНЫЕ НАСТРОЙКИ СЕРВЕРА
 # -----------------------------------------------------------------
-PORT=3000
+PORT=3223
 NODE_ENV=production
-APP_URL=http://Ваш_IP_или_Домен:3000
+APP_URL=http://Ваш_IP_или_Домен:3223
 
 # -----------------------------------------------------------------
 # 2. ПОДКЛЮЧЕНИЕ К POSTGRESQL (СУБД)
@@ -152,16 +152,16 @@ pm2 startup
 
 ### 1. Проверка работы сервера и базы данных:
 ```bash
-curl http://localhost:3000/api/health
+curl http://localhost:3223/api/health
 # Ответ: {"status":"ok","dbConnected":true}
 
-curl http://localhost:3000/api/db/status
+curl http://localhost:3223/api/db/status
 # Ответ выведет текущее состояние БД и количество созданных таблиц
 ```
 
 ### 2. Проверка статуса Telegram Бота:
 ```bash
-curl http://localhost:3000/api/telegram/bot-status
+curl http://localhost:3223/api/telegram/bot-status
 ```
 Пример успешного ответа:
 ```json
@@ -179,13 +179,13 @@ curl http://localhost:3000/api/telegram/bot-status
 ### 3. Проверка отправки писем через SMTP и Капчи:
 ```bash
 # Проверить статус SMTP настройки
-curl http://localhost:3000/api/auth/smtp-status
+curl http://localhost:3223/api/auth/smtp-status
 
 # Протестировать подключение к SMTP серверу
-curl -X POST http://localhost:3000/api/auth/test-smtp
+curl -X POST http://localhost:3223/api/auth/test-smtp
 
 # Получить математическую капчу (генерирует SVG)
-curl http://localhost:3000/api/auth/captcha
+curl http://localhost:3223/api/auth/captcha
 ```
 
 ### 4. Просмотр логов сервера в реальном времени:
